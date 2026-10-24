@@ -53,6 +53,11 @@ path = "examples/iter/test.rs"
 name = "test"
 path = "examples/test/test.rs"
 
+[[bench]]
+name = "urng-core"
+harness = false
+test = false
+
 
 [features]
 rand = ["dep:rand_core"]
