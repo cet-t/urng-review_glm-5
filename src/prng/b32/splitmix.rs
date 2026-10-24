@@ -25,6 +25,9 @@ const B: u64 = 0xC4CE_B9FE_1A85_EC53;
 
 impl SplitMix32 {
     /// Creates a new `SplitMix32` instance with the given seed.
+    ///
+    /// The initial state is gated to `seed | 1` (documented deviation — see
+    /// the "Determinism / compatibility notes" in the README).
     pub const fn new(seed: u32) -> Self {
         Self {
             state: wrap!(seed | 1),

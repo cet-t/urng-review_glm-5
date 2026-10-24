@@ -148,6 +148,11 @@ REVIEW.md A7 / the project fix report for the rationale):
   SplitMix-style seeding from the user seed. Outputs are **not** comparable
   with reference MT19937/SFMT implementations for the same seed, and no
   official golden-vector cross-check is claimed for them.
+- `SplitMix64` starts its stream at `seed | 1` instead of `seed` itself; for
+  even seeds the output stream therefore differs from reference SplitMix64
+  implementations (odd seeds behave identically to the reference).
+- `Shuffle`-family `choice`/`choice_mut` on an empty slice panics (documented
+  contract; `shuffle` reports an `Err` for empty input).
 - The scalar C ABI bulk entry points do not reproduce the scalar sequential
   stream (see the note in the C ABI section below).
 
@@ -184,7 +189,7 @@ Enable the `urng` feature on `cribler` for pre-built typed convenience that work
 
 ```toml
 [dependencies]
-urng = "1.0.0"
+urng = "1.0.1"
 cribler = { version = "0.3", features = ["urng"] }
 ```
 

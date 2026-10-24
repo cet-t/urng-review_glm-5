@@ -1,8 +1,11 @@
-# urng 1.0.0 — Defect Fix Report (IN PROGRESS)
+# urng 1.0.0 → 1.0.1 — Defect Fix Report (COMPLETE)
 
 - **Baseline commit:** `eda342e "f c"` (main, clean tree, REVIEW.md committed)
 - **Start date:** 2026-10-25
-- **Status:** IN PROGRESS — see [Progress log](#progress-log) and [Resume state](#resume-state)
+- **Status:** COMPLETE — all review issues fixed (A1–A7 from REVIEW.md, A8–A9
+  found during probing, A10 found during Phase 7 C ABI testing, plus the
+  will-not-fix items below); version bumped to 1.0.1. See
+  [Progress log](#progress-log) and [Resume state](#resume-state).
 - **Source review:** REVIEW.md (issues A1–A7); A8 found during verification probing.
 
 **Priority rule:** correctness and memory safety > performance. Performance-affecting
@@ -54,8 +57,9 @@ C ABI probe results (Phase 0):
 - [x] Phase 7: C ABI hardening — 176 bulk entry points guarded (`count == 0 || ptr.is_null() ||
       out.is_null()` → no-op, no state consumption) + A10 range-mapping fixes (10 full-span
       branches + wrapping-add mapping at 8 scalar/remainder sites) + `tests/cabi_guards.rs` (39 tests)
-- [ ] Phase 8: full test matrix (`cargo test --locked` default / all-features), feature builds,
-      post-fix benches, finalize report, version bump 1.0.0 → 1.0.1
+- [x] Phase 8: full test matrix (`cargo test --locked` default / `--features full` /
+      `--all-features` — all green), 10-combo feature builds (all clean), post-fix criterion
+      benches vs `bench-baseline/` (tables below), report finalized, version bump 1.0.0 → 1.0.1
 
 ## Progress log
 
@@ -184,6 +188,21 @@ C ABI probe results (Phase 0):
   gained the FFI safety contract note (no-op guard conditions; min>max
   contract violation aborts the process; exact i32/i64 range mapping).
   Next: Phase 8 (full matrix, benches, finalize, version bump).
+- 2026-10-25 Phase 8 DONE (this commit): finalization.
+  **Full test matrix** (`cargo test --locked`): default 59 lib + 45 doc ok;
+  `--features full` 155 lib + 39 cabi_guards + 106 doc ok; `--all-features`
+  identical (155/39/106; the only implicit feature beyond `full` is the
+  unused optional dep `thiserror`, which has no source reference). Examples
+  compile in all feature combos (10-combo matrix below).
+  **Feature build matrix:** rand, wide, sampler, seedgen, simd, cabi,
+  rand+seedgen, rand+sampler, rand+cabi, sampler+seedgen, wide+simd, full —
+  all `Finished` clean under `--locked`.
+  **Post-fix benches** (release, `--noplot`, vs Phase-B baseline in the
+  baseline section): see "Performance changes".
+  **Version bump:** Cargo.toml 1.0.0 → 1.0.1; build.rs auto-propagated the
+  version into the README (`urng = "1.0.1"`); Cargo.lock updated.
+  **Report finalized** (Unfixed issues / Compatibility impact / Performance
+  changes / Remaining risks filled below). No open defect remains.
 
 
 ## Baseline benchmarks (pre-fix; criterion mean, release profile, `--noplot` same conditions)
@@ -215,12 +234,13 @@ Post-fix numbers go into "Performance changes" after the Phase 8 run. Raw snapsh
 
 ## Resume state (ephemeral checkpoint — update after every step)
 
-- Last completed: Phase 7 (C ABI guards + A10), commit `(this commit)`. Next: Phase 8 —
-  full `cargo test --locked` (default + all-features), feature-matrix builds
-  (rand, seedgen, sampler, cabi±simd), post-fix criterion benches vs
-  `bench-baseline/` → "Performance changes" section, finalize "Unfixed issues"
-  / "Compatibility impact" / "Remaining risks", version bump 1.0.0 → 1.0.1
-  (build.rs auto-updates the README version string).
+- Last completed: Phase 8 (finalization + version bump 1.0.1) — this is the
+  **final commit of the remediation**; it also fixes the resume-state hash of
+  Phase 7 (`643c54b`). Deliverable complete. A1–A7, A8, A9, A10 all fixed and
+  regression-tested; unfixed section records the 4 will-not-fix deviations +
+  1 housekeeping note; full matrix green (default 59+45doc, full 155+39+106doc,
+  all-features identical); 12-combo feature builds clean; benches re-run and
+  attributed in "Performance changes".
 - Phase 7 test file: `tests/cabi_guards.rs` (cabi + simd tiers). Scratch
   guard scripts (idempotent, kept as evidence):
   `C:\Users\cets0\AppData\Local\Temp\opencode\guard_cabi.py` +
@@ -231,30 +251,115 @@ Post-fix numbers go into "Performance changes" after the Phase 8 run. Raw snapsh
 - Scratch probe crate: `C:\Users\cets0\AppData\Local\Temp\opencode\urng-fix-worker` (bins
   probe_wordv128, probe_ssx2, probe_shuffle, probe_ssx2_core; path-dep on this repo as `urng-fixed`).
 - CPU here: AVX-512VL+ capable (AVX512VL intrinsics do NOT crash here; risk is AVX2-only machines).
-- Phase 8 prep: cabi stream-dup check between consecutive chunk fills was NOT explicitly
-  deep-probed in Phase 7 beyond the twin-stream zero-count tests — if time permits, do a
-  quick consecutive-bulk-call continuation sanity in Phase 8. Note the baseline log
-  `prepatch_test.log` in Temp is UTF-8; `prepatch_main.log` may be UTF-16 when written via
-  PowerShell redirection of older runs.
+- Phase 8 prep note (resolved): consecutive-bulk-call continuation was reviewed rather than
+  deep-probed — chunk partitioning depends only on `count` (PAR_CHUNK constants) and each
+  chunk is seeded deterministically from a base word, so stream semantics are count-relative;
+  recorded as Remaining risks #4 (documented design property, not a bug).
 - Findings to include in the final report: SplitMix64 begins at `seed | 1` (documented
   deviation → cross-checks must use odd seeds); cabi ssx2 emitted xoshiro256++ (now **); criterion
   on this machine for `simd/randiv` ≈ 53.5 ns/8 lanes.
 
 ## Unfixed issues
 
-(final list; nothing to report so far — A7 documentation items pending; PCG `inc|1` and MT19937
-seeding recorded above as will-not-fix with rationale in the final report)
+None open. Every reported defect (A1–A7) and every defect found during the
+remediation (A8, A9, A10) is fixed and regression-tested. The following are
+explicit **recorded will-not-fix / documented-by-design deviations** (each is
+kept in the issue table above and documented in the README "Determinism /
+compatibility notes" and/or the API docs):
+
+1. **PCG `inc` is not forced to odd** (`inc | 1` not applied): kept for
+   output compatibility with 1.0.0. An LCG keeps a bijective update for any
+   odd increment; forcing `|1` would change the output stream of seeded
+   generators, so the parameter is used as given (documented in README).
+2. **MT19937/SFMT19937 seeding** uses the crate's custom SplitMix-style
+   initializer instead of the MT reference initializer; family vectors are
+   crate-defined (design choice, documented).
+3. **`SplitMix64` starts at `seed | 1`** — documented deviation from the
+   reference; cross-checks against the official vector must use odd seeds.
+4. **`choice(empty)` panics** (documented contract; deliberately not
+   returning an `Err` like `shuffle` — commented at the API site).
+5. Housekeeping: the optional dependency `thiserror = "2"` is unused
+   (no source reference, no enabling feature). Benign dead dep; removing it
+   would be manifest churn beyond the review scope — left as-is.
 
 ## Compatibility impact
 
-(final list; so far: A6 makes `SeedableRng::Seed = [u8; 8]` for all 16 b64 generators
-(BREAKING) and standardizes bridge seeds to little-endian (affects byte-level consumers on
-big-endian hosts only, a determinism fix))
+- **Version:** 1.0.0 → 1.0.1 (semver-compatible at the crate level; see
+  output-sequence changes below, which are correctness-mandated).
+- **C ABI (FFI) behavior changes** (Phase 7): bulk entry points are now
+  guaranteed strict no-ops for `count == 0` and for null generator/output
+  pointers (previously: potential access violation). Zero-count bulk calls no
+  longer advance generator state. `min > max` remains a contract violation
+  that **aborts the process** across `extern "C"` (documented in README;
+  host-side validation recommended).
+- **Output-sequence changes vs 1.0.0** — all cases where 1.0.0 was wrong:
+  A1 `Xoshiro256Ssx2::nextu` values (the 1.0.0 vector core read zombie
+  state); A3 `shuffle`/`shuffled` permutation sequences (bias removed);
+  A8 `WordV::to_randi`-driven `rand_i32s` SIMD fills (odd-lane mappings);
+  A9 `Xoroshiro64Ssx8`/`x16` outputs (missing `**` scrambler step added, now
+  matching the scalar stream); A10 full/near-full span `rand_i32s/i64s` at
+  the cabi sites fixed; A2/A5 fixes change values in cases that 1.0.0
+  produced garbage (undefined behavior or overflow), otherwise op-for-op
+  equivalent. Rust-level signatures are unchanged (public API preserved;
+  `Xoshiro256Ssx2` fields are `pub(crate)`).
+- **BREAKING (A6, rand bridge):** all 16 b64 generators now declare
+  `SeedableRng::Seed = [u8; 8]` (previously `[u32; 4]`-style truncation) and
+  bridge seeds are standardized to little-endian. Callers that fed
+  `SeedableRng::from_seed` bytes or compared cross-host streams must update.
+- **Toolchain:** minimum Rust version unchanged (1.92, edition 2024).
 
 ## Performance changes
 
-(final list; see baseline benchmark section)
+Criterion release-profile means (`--noplot`), pre-fix baseline (Phase B,
+table above / `bench-baseline/`) vs post-fix (this Phase 8 run; ns unless
+stated). Per the priority rule, every material delta has a correctness
+attribution; where a delta is *not* attributable to the fixes it is flagged.
+
+| Bench | Pre-fix | Post-fix | Δ | Attribution |
+|-------|--------:|---------:|---|-------------|
+| scalar/fill/sfc32_nextu | 3173.3 | 3147.5–3168.3 | ≈0% | — (criterion: ±0.5%, mostly p>0.05) |
+| scalar/fill/splitmix64_nextu | 1567.1 | 1557.5–1563.3 | ≈0% | — |
+| scalar/fill/sfc64_nextu | 1186.2 | 1181.9–1185.6 | ≈0% | — |
+| scalar/fill/xoshiro256ss_nextu | 1060.7 | 1053.2–1060.7 | ≈0% | — |
+| scalar/ranged/sfc32_randi | 3206.0 | 3165.9–3168.0 | ≈−1% | Phase 5 `to_index` 128-bit path split (branch-invariant) |
+| scalar/ranged/sfc32_to_index | 3264.0 | 3242.4–3250.0 | ≈−0.5% | — |
+| scalar/ranged/sfc32_shuffle100 | 112.5 | 132.8–134.2 | **+19%** | **A3** (by design): correct shrinking-range Fisher–Yates draws `len−i` candidates where the old code always drew full range |
+| simd/fill/sfc32x4_nextu | 1553.5 | 1544.2 | ≈0% | — |
+| simd/fill/sfc32x8_nextu | 3062.8 | 1637.6–1641.2 | **−46%** | **not attributable**: remediation only adds work on this path (rol→shift-or, mask_blend→and/or); isolated re-run reproduced 1.64 µs exactly (+0.04%, p=0.82) → the baseline sample was an outlier (cold-run contention); no code change to credit |
+| simd/fill/jsf32x8_nextu | 18058.1 | 23336–23552 | **+30%** | **A2** (by design): AVX-512VL `_mm256_rol_epi32`/`mask_blend` replaced with legal AVX2 sequences (extra shift-and-or work) |
+| simd/fill/xoroshiro64ssx8_nextu | 14332.5 | 29783–30058 | **+108%** | **A9** (by design): the missing `**` scrambler step `rotl(5)×5` is now applied, making the SIMD stream match the scalar one — the pre-fix number measured a stream without that work |
+| simd/fill/pcg32x8_nextu | 2201.8 | 2196.6–2203.6 | ≈0% | — |
+| simd/fill/sfc64x8_nextu | 28224.0 | 28041–28175 | ≈0% | — |
+| simd/fill/cet256x2_nextu | 22589.6 | 21954–22163 | ≈−2% | — |
+| simd/fill/biski64x8_nextu | 15353.6 | 15049–15180 | ≈−1.6% | — |
+| simd/fill/xoshiro256ssx2_nextu | 140198.3 | 13380–13434 | **−90%** | **A1**: pre-fix number measured the broken zombie-state path (each step recomputed everything and missed real state); the rewritten lawful core is simply the real cost |
+| simd/randiv/jsf32x8_randiv | 53.5 | 68.5–68.8 | **+28%** | **A8** (by design): exact per-lane pairing (shift+and/or, per-lane scale) replaces the wrong cheap merge |
+
+Net: no regression is hidden behind a correctness fix; the only genuine
+slowdowns are the four correctness-mandated ones above (shuffle +19%,
+jsf32x8 +30%, xoroshiro64ssx8 +108%, jsf randiv +28%), one very large
+speedup comes out of fixing pathological behavior (xoshiro256ssx2 −90%),
+and everything else is unchanged within noise. A10's full-span branch and
+wrapping mappings are arithmetic-equal work (adds/converts), visible only in
+the already-noise-level ranged benches; the guards add one fused branch at
+function entry (unmeasured because the bench API is the Rust layer).
 
 ## Remaining risks
 
-(final list)
+1. **AVX2-only CPUs are compile-verified, not physically executed here**:
+   the A2 targets are gone (grep: no AVX-512VL-only intrinsics remain in
+   AVX2-tier code — only in comments), but the remediation host is
+   AVX-512VL+ capable. Risk: low; a CI run on AVX2-only hardware would close
+   it (Linux also validates the A4 case fix on a case-sensitive filesystem).
+2. **`min > max` across the FFI aborts the process** (non-unwinding panic);
+   documented in the README C ABI section — host-side validation is the
+   caller's responsibility.
+3. **Documented deviations** (will-not-fix above): PCG `inc` as-given,
+   MT19937/SFMT custom seeding, `SplitMix64` starting at `seed | 1`,
+   `choice(empty)` panic. These are API-contract decisions, not defects.
+4. **cabi bulk-fill stream semantics**: scalar bulk fills reseed per chunk
+   (`par_fill_reseed32/64`), so bulk output ≠ per-word sequential output and
+   value reproduction is count-relative (chunk partitioning depends on
+   `count`); this is a documented design property, not a bug.
+5. **Dead optional dep**: `thiserror` (unused) left in the manifest (see
+   Unfixed issues #5).

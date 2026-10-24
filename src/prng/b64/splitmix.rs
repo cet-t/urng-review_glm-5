@@ -19,6 +19,9 @@ pub struct SplitMix64 {
 
 impl SplitMix64 {
     /// Creates a new `SplitMix64` instance with the given seed.
+    ///
+    /// The initial state is gated to `seed | 1` (documented deviation — see
+    /// the "Determinism / compatibility notes" in the README).
     pub const fn new(seed: u64) -> Self {
         Self { s: wrap!(seed | 1) }
     }
