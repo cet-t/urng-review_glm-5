@@ -9,3 +9,6 @@ tasks/
 sources/
 token-optimizer/
 AGENTS.md
+
+# bench baseline snapshot (kept on disk for before/after comparison, not tracked)
+/bench-baseline/
