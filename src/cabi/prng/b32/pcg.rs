@@ -23,6 +23,9 @@ pub extern "C" fn pcg32_free(ptr: *mut Pcg32) {
 /// Fills the output buffer with the next random `u32` values.
 #[unsafe(no_mangle)]
 pub extern "C" fn pcg32_next_u32s(ptr: *mut Pcg32, out: *mut u32, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -33,6 +36,9 @@ pub extern "C" fn pcg32_next_u32s(ptr: *mut Pcg32, out: *mut u32, count: usize) 
 /// Fills the output buffer with the next random `f32` values in the range [0, 1).
 #[unsafe(no_mangle)]
 pub extern "C" fn pcg32_next_f32s(ptr: *mut Pcg32, out: *mut f32, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -49,6 +55,9 @@ pub extern "C" fn pcg32_rand_i32s(
     min: i32,
     max: i32,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -65,6 +74,9 @@ pub extern "C" fn pcg32_rand_f32s(
     min: f32,
     max: f32,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -242,13 +254,16 @@ mod simd {
         let mut state = _mm512_loadu_si512(start_state.as_ptr() as *const _);
         let inc = _mm512_loadu_si512(inc0.as_ptr() as *const _);
 
+        // Multiply-high mapping (quotient in [0, range)); the final add wraps
+        // so the upper half of ranges > 2^31 stays exact in all profiles.
         let mut chunks_exact = chunk.chunks_exact_mut(PCG32X8_LANE);
         for dst in chunks_exact.by_ref() {
             let out256 = Pcg32x8::step_u32(&mut state, inc, mult_lo, mult_hi, mask32);
             let mut tmp = [0u32; PCG32X8_LANE];
             _mm256_storeu_si256(tmp.as_mut_ptr() as *mut __m256i, out256);
             for i in 0..PCG32X8_LANE {
-                dst[i] = ((tmp[i] as u64).wrapping_mul(range) >> 32) as i32 + min;
+                dst[i] = (((tmp[i] as u64).wrapping_mul(range) >> 32) as u32)
+                    .wrapping_add(min as u32) as i32;
             }
         }
 
@@ -258,7 +273,8 @@ mod simd {
             let mut tmp = [0u32; PCG32X8_LANE];
             _mm256_storeu_si256(tmp.as_mut_ptr() as *mut __m256i, out256);
             for j in 0..rem.len() {
-                rem[j] = ((tmp[j] as u64).wrapping_mul(range) >> 32) as i32 + min;
+                rem[j] = (((tmp[j] as u64).wrapping_mul(range) >> 32) as u32)
+                    .wrapping_add(min as u32) as i32;
             }
         }
     }
@@ -369,7 +385,7 @@ mod simd {
     /// Fills the output buffer with the next random `u32` values.
     #[unsafe(no_mangle)]
     pub extern "C" fn pcg32x8_next_u32s(ptr: *mut Pcg32x8, out: *mut u32, count: usize) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {
@@ -401,7 +417,7 @@ mod simd {
     /// Fills the output buffer with the next random `f32` values in the range [0, 1).
     #[unsafe(no_mangle)]
     pub extern "C" fn pcg32x8_next_f32s(ptr: *mut Pcg32x8, out: *mut f32, count: usize) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {
@@ -447,7 +463,7 @@ mod simd {
         min: i32,
         max: i32,
     ) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {
@@ -496,7 +512,7 @@ mod simd {
         min: f32,
         max: f32,
     ) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
 

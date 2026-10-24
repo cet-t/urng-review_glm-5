@@ -25,6 +25,9 @@ const SFC64_PAR_CHUNK: usize = 0x10000;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn sfc64_next_u64s(ptr: *mut Sfc64, out: *mut u64, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -47,6 +50,9 @@ pub extern "C" fn sfc64_next_u64s(ptr: *mut Sfc64, out: *mut u64, count: usize) 
 
 #[unsafe(no_mangle)]
 pub extern "C" fn sfc64_next_f64s(ptr: *mut Sfc64, out: *mut f64, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -75,6 +81,9 @@ pub extern "C" fn sfc64_rand_i64s(
     min: i64,
     max: i64,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -103,6 +112,9 @@ pub extern "C" fn sfc64_rand_f64s(
     min: f64,
     max: f64,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -276,7 +288,7 @@ mod simd {
 
     #[unsafe(no_mangle)]
     pub extern "C" fn sfc64x8_next_u64s(ptr: *mut Sfc64x8, out: *mut u64, count: usize) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {

@@ -87,6 +87,9 @@ fn fry4_advance(rng: &mut Threefry32x4, count: usize) {
 /// This function uses parallel processing for large counts.
 #[unsafe(no_mangle)]
 pub extern "C" fn threefry32x4_next_u32s(ptr: *mut Threefry32x4, out: *mut u32, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -99,6 +102,9 @@ pub extern "C" fn threefry32x4_next_u32s(ptr: *mut Threefry32x4, out: *mut u32, 
 /// This function uses parallel processing for large counts.
 #[unsafe(no_mangle)]
 pub extern "C" fn threefry32x4_next_f32s(ptr: *mut Threefry32x4, out: *mut f32, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -117,6 +123,9 @@ pub extern "C" fn threefry32x4_rand_i32s(
     min: i32,
     max: i32,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -138,6 +147,9 @@ pub extern "C" fn threefry32x4_rand_f32s(
     min: f32,
     max: f32,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -219,6 +231,9 @@ fn fry2_advance(rng: &mut Threefry32x2, count: usize) {
 /// This function uses parallel processing for large counts.
 #[unsafe(no_mangle)]
 pub extern "C" fn threefry32x2_next_u32s(ptr: *mut Threefry32x2, out: *mut u32, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -231,6 +246,9 @@ pub extern "C" fn threefry32x2_next_u32s(ptr: *mut Threefry32x2, out: *mut u32, 
 /// This function uses parallel processing for large counts.
 #[unsafe(no_mangle)]
 pub extern "C" fn threefry32x2_next_f32s(ptr: *mut Threefry32x2, out: *mut f32, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -249,6 +267,9 @@ pub extern "C" fn threefry32x2_rand_i32s(
     min: i32,
     max: i32,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);

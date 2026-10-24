@@ -19,6 +19,9 @@ pub extern "C" fn twisted_gfsr_free(ptr: *mut TwistedGFSR) {
 /// Fills `out[0..count]` with raw `u64` random values.
 #[unsafe(no_mangle)]
 pub extern "C" fn twisted_gfsr_next_u64s(ptr: *mut TwistedGFSR, out: *mut u64, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         crate::_internal::fill_with(out, count, || rng.nextu());
@@ -27,6 +30,9 @@ pub extern "C" fn twisted_gfsr_next_u64s(ptr: *mut TwistedGFSR, out: *mut u64, c
 /// Fills `out[0..count]` with `f64` values uniformly distributed in `[0, 1)`.
 #[unsafe(no_mangle)]
 pub extern "C" fn twisted_gfsr_next_f64s(ptr: *mut TwistedGFSR, out: *mut f64, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         crate::_internal::fill_with(out, count, || rng.nextf());
@@ -41,6 +47,9 @@ pub extern "C" fn twisted_gfsr_rand_i64s(
     min: i64,
     max: i64,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         crate::_internal::fill_with(out, count, || rng.randi(min, max));
@@ -55,6 +64,9 @@ pub extern "C" fn twisted_gfsr_rand_f64s(
     min: f64,
     max: f64,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         crate::_internal::fill_with(out, count, || rng.randf(min, max));

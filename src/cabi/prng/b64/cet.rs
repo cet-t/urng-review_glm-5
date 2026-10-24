@@ -27,6 +27,9 @@ pub extern "C" fn cet64_free(ptr: *mut Cet64) {
 /// Fills `out[0..count]` with raw `u64` random values.
 #[unsafe(no_mangle)]
 pub extern "C" fn cet64_next_u64s(ptr: *mut Cet64, out: *mut u64, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let seed = rng.nextu();
@@ -47,6 +50,9 @@ pub extern "C" fn cet64_next_u64s(ptr: *mut Cet64, out: *mut u64, count: usize) 
 /// Fills `out[0..count]` with `f64` values uniformly distributed in `[0, 1)`.
 #[unsafe(no_mangle)]
 pub extern "C" fn cet64_next_f64s(ptr: *mut Cet64, out: *mut f64, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let seed = rng.nextu();
@@ -73,6 +79,9 @@ pub extern "C" fn cet64_rand_i64s(
     min: i64,
     max: i64,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let seed = rng.nextu();
@@ -99,6 +108,9 @@ pub extern "C" fn cet64_rand_f64s(
     min: f64,
     max: f64,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let seed = rng.nextu();
@@ -131,6 +143,9 @@ pub extern "C" fn cet256_free(ptr: *mut Cet256) {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn cet256_next_u64s(ptr: *mut Cet256, out: *mut u64, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let seed = rng.nextu();
@@ -151,6 +166,9 @@ pub extern "C" fn cet256_next_u64s(ptr: *mut Cet256, out: *mut u64, count: usize
 
 #[unsafe(no_mangle)]
 pub extern "C" fn cet256_next_f64s(ptr: *mut Cet256, out: *mut f64, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let seed = rng.nextu();
@@ -177,6 +195,9 @@ pub extern "C" fn cet256_rand_i64s(
     min: i64,
     max: i64,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let seed = rng.nextu();
@@ -203,6 +224,9 @@ pub extern "C" fn cet256_rand_f64s(
     min: f64,
     max: f64,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let seed = rng.nextu();
@@ -411,7 +435,7 @@ mod simd {
 
     #[unsafe(no_mangle)]
     pub extern "C" fn cet64x8_next_u64s(ptr: *mut Cet64x8, out: *mut u64, count: usize) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
 
@@ -473,7 +497,7 @@ mod simd {
 
     #[unsafe(no_mangle)]
     pub extern "C" fn cet256x2_next_u64s(ptr: *mut Cet256x2, out: *mut u64, count: usize) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
 

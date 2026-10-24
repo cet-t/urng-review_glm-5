@@ -23,6 +23,9 @@ pub extern "C" fn splitmix32_free(ptr: *mut SplitMix32) {
 /// Fills the output buffer with the next random `u32` values.
 #[unsafe(no_mangle)]
 pub extern "C" fn splitmix32_next_u32s(ptr: *mut SplitMix32, out: *mut u32, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -33,6 +36,9 @@ pub extern "C" fn splitmix32_next_u32s(ptr: *mut SplitMix32, out: *mut u32, coun
 /// Fills the output buffer with the next random `f32` values in the range [0, 1).
 #[unsafe(no_mangle)]
 pub extern "C" fn splitmix32_next_f32s(ptr: *mut SplitMix32, out: *mut f32, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -49,6 +55,9 @@ pub extern "C" fn splitmix32_rand_i32s(
     min: i32,
     max: i32,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -67,6 +76,9 @@ pub extern "C" fn splitmix32_rand_f32s(
     min: f32,
     max: f32,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -147,7 +159,7 @@ mod simd {
         out: *mut u32,
         count: usize,
     ) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {

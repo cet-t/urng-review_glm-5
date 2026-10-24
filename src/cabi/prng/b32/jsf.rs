@@ -23,7 +23,7 @@ pub extern "C" fn jsf32_free(ptr: *mut Jsf32) {
 /// Fills the output buffer with the next random `u32` values.
 #[unsafe(no_mangle)]
 pub extern "C" fn jsf32_next_u32s(ptr: *mut Jsf32, out: *mut u32, count: usize) {
-    if count == 0 {
+    if count == 0 || ptr.is_null() || out.is_null() {
         return;
     }
     unsafe {
@@ -37,7 +37,7 @@ pub extern "C" fn jsf32_next_u32s(ptr: *mut Jsf32, out: *mut u32, count: usize) 
 /// Fills the output buffer with the next random `f32` values in the range [0, 1).
 #[unsafe(no_mangle)]
 pub extern "C" fn jsf32_next_f32s(ptr: *mut Jsf32, out: *mut f32, count: usize) {
-    if count == 0 {
+    if count == 0 || ptr.is_null() || out.is_null() {
         return;
     }
     unsafe {
@@ -57,7 +57,7 @@ pub extern "C" fn jsf32_rand_i32s(
     min: i32,
     max: i32,
 ) {
-    if count == 0 {
+    if count == 0 || ptr.is_null() || out.is_null() {
         return;
     }
     unsafe {
@@ -77,7 +77,7 @@ pub extern "C" fn jsf32_rand_f32s(
     min: f32,
     max: f32,
 ) {
-    if count == 0 {
+    if count == 0 || ptr.is_null() || out.is_null() {
         return;
     }
     unsafe {
@@ -369,7 +369,7 @@ mod simd {
     /// Fills the output buffer with the next random `u32` values.
     #[unsafe(no_mangle)]
     pub extern "C" fn jsf32x16_next_u32s(ptr: *mut Jsf32x16, out: *mut u32, count: usize) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {
@@ -397,7 +397,7 @@ mod simd {
     /// Fills the output buffer with the next random `f32` values in the range [0, 1).
     #[unsafe(no_mangle)]
     pub extern "C" fn jsf32x16_next_f32s(ptr: *mut Jsf32x16, out: *mut f32, count: usize) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {
@@ -431,7 +431,18 @@ mod simd {
         min: i32,
         max: i32,
     ) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
+            return;
+        }
+        // The lane range mapping below cannot represent range == 2^32 (the
+        // range is carried in 32-bit lanes), so for the full i32 span use
+        // the exact top-bit-XOR mapping of the uniform u32 stream instead.
+        if min == i32::MIN && max == i32::MAX {
+            jsf32x16_next_u32s(ptr, out.cast(), count);
+            let values = unsafe { std::slice::from_raw_parts_mut(out, count) };
+            for v in values {
+                *v = (*v as u32).wrapping_add(min as u32) as i32;
+            }
             return;
         }
         unsafe {
@@ -469,7 +480,7 @@ mod simd {
         min: f32,
         max: f32,
     ) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {

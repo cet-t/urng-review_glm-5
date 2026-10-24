@@ -25,6 +25,9 @@ const XOSHIRO256PP_PAR_CHUNK: usize = 4096;
 /// Fills `out[0..count]` with raw `u64` random values using parallel chunk generation.
 #[unsafe(no_mangle)]
 pub extern "C" fn xoshiro256pp_next_u64s(ptr: *mut Xoshiro256Pp, out: *mut u64, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -47,6 +50,9 @@ pub extern "C" fn xoshiro256pp_next_u64s(ptr: *mut Xoshiro256Pp, out: *mut u64, 
 /// Fills `out[0..count]` with `f64` values in `[0, 1)` using parallel chunk generation.
 #[unsafe(no_mangle)]
 pub extern "C" fn xoshiro256pp_next_f64s(ptr: *mut Xoshiro256Pp, out: *mut f64, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -75,6 +81,9 @@ pub extern "C" fn xoshiro256pp_rand_i64s(
     min: i64,
     max: i64,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -103,6 +112,9 @@ pub extern "C" fn xoshiro256pp_rand_f64s(
     min: f64,
     max: f64,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -297,7 +309,7 @@ mod simd {
         out: *mut u64,
         count: usize,
     ) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {
@@ -353,6 +365,9 @@ const XOSHIRO256SS_PAR_CHUNK: usize = 4096;
 /// Fills `out[0..count]` with raw `u64` random values using parallel chunk generation.
 #[unsafe(no_mangle)]
 pub extern "C" fn xoshiro256ss_next_u64s(ptr: *mut Xoshiro256Ss, out: *mut u64, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -375,6 +390,9 @@ pub extern "C" fn xoshiro256ss_next_u64s(ptr: *mut Xoshiro256Ss, out: *mut u64, 
 /// Fills `out[0..count]` with `f64` values in `[0, 1)` using parallel chunk generation.
 #[unsafe(no_mangle)]
 pub extern "C" fn xoshiro256ss_next_f64s(ptr: *mut Xoshiro256Ss, out: *mut f64, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -403,6 +421,9 @@ pub extern "C" fn xoshiro256ss_rand_i64s(
     min: i64,
     max: i64,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -431,6 +452,9 @@ pub extern "C" fn xoshiro256ss_rand_f64s(
     min: f64,
     max: f64,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);

@@ -54,7 +54,7 @@ where
 
 #[unsafe(no_mangle)]
 pub extern "C" fn xoroshiro64ss_next_u32s(ptr: *mut Xoroshiro64Ss, out: *mut u32, count: usize) {
-    if count == 0 {
+    if count == 0 || ptr.is_null() || out.is_null() {
         return;
     }
     unsafe {
@@ -67,7 +67,7 @@ pub extern "C" fn xoroshiro64ss_next_u32s(ptr: *mut Xoroshiro64Ss, out: *mut u32
 
 #[unsafe(no_mangle)]
 pub extern "C" fn xoroshiro64ss_next_f32s(ptr: *mut Xoroshiro64Ss, out: *mut f32, count: usize) {
-    if count == 0 {
+    if count == 0 || ptr.is_null() || out.is_null() {
         return;
     }
     unsafe {
@@ -86,7 +86,7 @@ pub extern "C" fn xoroshiro64ss_rand_i32s(
     min: i32,
     max: i32,
 ) {
-    if count == 0 {
+    if count == 0 || ptr.is_null() || out.is_null() {
         return;
     }
     unsafe {
@@ -105,7 +105,7 @@ pub extern "C" fn xoroshiro64ss_rand_f32s(
     min: f32,
     max: f32,
 ) {
-    if count == 0 {
+    if count == 0 || ptr.is_null() || out.is_null() {
         return;
     }
     unsafe {
@@ -372,7 +372,7 @@ mod simd {
         out: *mut u32,
         count: usize,
     ) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {
@@ -401,7 +401,7 @@ mod simd {
         out: *mut f32,
         count: usize,
     ) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {
@@ -432,7 +432,18 @@ mod simd {
         min: i32,
         max: i32,
     ) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
+            return;
+        }
+        // The lane range mapping below cannot represent range == 2^32 (the
+        // range is carried in 32-bit lanes), so for the full i32 span use
+        // the exact top-bit-XOR mapping of the uniform u32 stream instead.
+        if min == i32::MIN && max == i32::MAX {
+            xoroshiro64ssx8_next_u32s(ptr, out.cast(), count);
+            let values = unsafe { std::slice::from_raw_parts_mut(out, count) };
+            for v in values {
+                *v = (*v as u32).wrapping_add(min as u32) as i32;
+            }
             return;
         }
         unsafe {
@@ -467,7 +478,7 @@ mod simd {
         min: f32,
         max: f32,
     ) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {
@@ -733,7 +744,7 @@ mod simd {
         out: *mut u32,
         count: usize,
     ) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {
@@ -762,7 +773,7 @@ mod simd {
         out: *mut f32,
         count: usize,
     ) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {
@@ -793,7 +804,18 @@ mod simd {
         min: i32,
         max: i32,
     ) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
+            return;
+        }
+        // The lane range mapping below cannot represent range == 2^32 (the
+        // range is carried in 32-bit lanes), so for the full i32 span use
+        // the exact top-bit-XOR mapping of the uniform u32 stream instead.
+        if min == i32::MIN && max == i32::MAX {
+            xoroshiro64ssx16_next_u32s(ptr, out.cast(), count);
+            let values = unsafe { std::slice::from_raw_parts_mut(out, count) };
+            for v in values {
+                *v = (*v as u32).wrapping_add(min as u32) as i32;
+            }
             return;
         }
         unsafe {
@@ -828,7 +850,7 @@ mod simd {
         min: f32,
         max: f32,
     ) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {

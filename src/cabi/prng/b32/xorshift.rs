@@ -21,6 +21,9 @@ pub extern "C" fn xorshift32_free(ptr: *mut Xorshift32) {
 /// Fills the output buffer with the next random `u32` values.
 #[unsafe(no_mangle)]
 pub extern "C" fn xorshift32_next_u32s(ptr: *mut Xorshift32, out: *mut u32, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         crate::_internal::fill_with(out, count, || rng.nextu());
@@ -30,6 +33,9 @@ pub extern "C" fn xorshift32_next_u32s(ptr: *mut Xorshift32, out: *mut u32, coun
 /// Fills the output buffer with the next random `f32` values in the range [0, 1).
 #[unsafe(no_mangle)]
 pub extern "C" fn xorshift32_next_f32s(ptr: *mut Xorshift32, out: *mut f32, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         crate::_internal::fill_with(out, count, || rng.nextf());
@@ -45,6 +51,9 @@ pub extern "C" fn xorshift32_rand_i32s(
     min: i32,
     max: i32,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         crate::_internal::fill_with(out, count, || rng.randi(min, max));
@@ -60,6 +69,9 @@ pub extern "C" fn xorshift32_rand_f32s(
     min: f32,
     max: f32,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         crate::_internal::fill_with(out, count, || rng.randf(min, max));
@@ -83,6 +95,9 @@ pub extern "C" fn xorshift128_free(ptr: *mut Xorshift128) {
 /// Fills `out[0..count]` with raw `u32` values from the generator.
 #[unsafe(no_mangle)]
 pub extern "C" fn xorshift128_next_u32s(ptr: *mut Xorshift128, out: *mut u32, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         crate::_internal::fill_with(out, count, || rng.nextu());
@@ -91,6 +106,9 @@ pub extern "C" fn xorshift128_next_u32s(ptr: *mut Xorshift128, out: *mut u32, co
 /// Fills `out[0..count]` with `f32` values in `[0, 1)`.
 #[unsafe(no_mangle)]
 pub extern "C" fn xorshift128_next_f32s(ptr: *mut Xorshift128, out: *mut f32, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         crate::_internal::fill_with(out, count, || rng.nextf());
@@ -105,6 +123,9 @@ pub extern "C" fn xorshift128_rand_i32s(
     min: i32,
     max: i32,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         crate::_internal::fill_with(out, count, || rng.randi(min, max));
@@ -119,6 +140,9 @@ pub extern "C" fn xorshift128_rand_f32s(
     min: f32,
     max: f32,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         crate::_internal::fill_with(out, count, || rng.randf(min, max));

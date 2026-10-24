@@ -29,7 +29,7 @@ const PHILOX32_PAR_CHUNK: usize = 4096;
 /// This function uses parallel processing for large counts.
 #[unsafe(no_mangle)]
 pub extern "C" fn philox32_next_u32s(ptr: *mut Philox32, out: *mut u32, count: usize) {
-    if count == 0 {
+    if count == 0 || ptr.is_null() || out.is_null() {
         return;
     }
     unsafe {
@@ -94,7 +94,7 @@ pub extern "C" fn philox32_next_u32s(ptr: *mut Philox32, out: *mut u32, count: u
 /// Fills the output buffer with the next random `f32` values in the range [0, 1).
 #[unsafe(no_mangle)]
 pub extern "C" fn philox32_next_f32s(ptr: *mut Philox32, out: *mut f32, count: usize) {
-    if count == 0 {
+    if count == 0 || ptr.is_null() || out.is_null() {
         return;
     }
     unsafe {
@@ -167,7 +167,7 @@ pub extern "C" fn philox32_rand_i32s(
     min: i32,
     max: i32,
 ) {
-    if count == 0 {
+    if count == 0 || ptr.is_null() || out.is_null() {
         return;
     }
     unsafe {
@@ -243,7 +243,7 @@ pub extern "C" fn philox32_rand_f32s(
     min: f32,
     max: f32,
 ) {
-    if count == 0 {
+    if count == 0 || ptr.is_null() || out.is_null() {
         return;
     }
     unsafe {
@@ -910,7 +910,7 @@ mod simd {
     /// This function utilizes AVX-512 SIMD and parallel processing for high throughput.
     #[unsafe(no_mangle)]
     pub extern "C" fn philox32x4x4_next_u32s(ptr: *mut Philox32x4x4, out: *mut u32, count: usize) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {
@@ -976,7 +976,7 @@ mod simd {
     /// Fills the output buffer with the next random `f32` values in the range [0, 1).
     #[unsafe(no_mangle)]
     pub extern "C" fn philox32x4x4_next_f32s(ptr: *mut Philox32x4x4, out: *mut f32, count: usize) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {
@@ -1012,7 +1012,18 @@ mod simd {
         min: i32,
         max: i32,
     ) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
+            return;
+        }
+        // The lane range mapping below cannot represent range == 2^32 (the
+        // range is carried in 32-bit lanes), so for the full i32 span use
+        // the exact top-bit-XOR mapping of the uniform u32 stream instead.
+        if min == i32::MIN && max == i32::MAX {
+            philox32x4x4_next_u32s(ptr, out.cast(), count);
+            let values = unsafe { std::slice::from_raw_parts_mut(out, count) };
+            for v in values {
+                *v = (*v as u32).wrapping_add(min as u32) as i32;
+            }
             return;
         }
         unsafe {
@@ -1056,7 +1067,7 @@ mod simd {
         min: f32,
         max: f32,
     ) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {

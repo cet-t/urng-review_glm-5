@@ -22,9 +22,10 @@ never as fixed. No test is deleted or disabled to hide a defect.
 | A4 | Medium | `lib.rs` `include_str!("../Readme.md")` case mismatch vs actual `README.md` → Linux build break | ☑ fixed (Phase 4, `fc6fba2`) |
 | A5 | High | Scalar `Word::to_randi/to_index` overflow (`randi(i32::MIN,i32::MAX)` debug panic/garbage; `to_index(len>2^32)` u64 wrap); plus missing `wrapping_add(min)` in b64 SIMD inline randi (Sfc64x8 sfc.rs, Cet256x2 cet.rs) | ☑ fixed (Phase 5, `1be3cf0`) |
 | A6 | Medium | `rand` bridge `impl_rand_trait!` uses BE `u32::from_be_bytes`-style carry for u64 words (`Seed=[u8;4]` truncates); b64 rand impls missing/incorrect | ☑ fixed (Phase 5, `1be3cf0`) |
-| A7 | Medium | misc: `choice(empty)` panic type, sampler validation (Alias all-zero weights returns nonsense silently), SeedGen retry loop, doc mismatches (Sfc64x8 doc says 4 lanes, README gaps) | ☑ fixed (Phase 6, this commit) |
+| A7 | Medium | misc: `choice(empty)` panic type, sampler validation (Alias all-zero weights returns nonsense silently), SeedGen retry loop, doc mismatches (Sfc64x8 doc says 4 lanes, README gaps) | ☑ fixed (Phase 6, `ef60118`) |
 | A8 | High | `WordV::to_randi` for `__m128i` (rngv.rs:36–52): odd lanes take **low** word of product and pair odd u×even scale → garbage for non-broadcast scale. `__m256i/__m512i`: odd lanes pair u_i×scale_{i-1} (low word OK, pairing wrong). Reference implementation already in-repo: `Sfc32x4::randiv` (sfc.rs:124–135). Verified: with broadcast scale (current C ABI usage) `__m256i/x16` high-word paths are correct; `__m128i` even with broadcast scale takes low word for odd lanes — **needs re-probe to confirm magnitude of impact** | ☑ fixed (Phase 2, `116eb79`) — note: broadcast-scale precondition is now moot, the mapping is genuinely per-lane correct and tested per-lane |
 | A9 | High (new) | simd-feature vector SIMD variants of `Xoroshiro64Ss` in `xoroshiro.rs`: SIMD variants return `s0*0x9E3779BB` directly without the scalar path's `rotl(5) * 5` final step, causing SIMD and scalar streams to diverge from the first output | ☑ fixed (Phase 2, `116eb79`; found during Phase 2 tests) |
+| A10 | Critical (new) | cabi `*_rand_i32s/_rand_i64s` range mapping at width/overflow boundaries: (a) 10 SIMD b32 sites broadcast `range` into 32-bit lanes, so `range == 2^32` becomes 0 and the full span (`i32::MIN..=i32::MAX`) degenerates to all-`i32::MIN` (sfc32x4/x8/x16, jsf32x16, xoroshiro64ssx8/x16, xoshiro128ppx16/ssx16, philox32x4x4, squares32x8); (b) scalar chunk kernels map via `((x*range)>>N) as iN + min` in checked arithmetic → value+min overflows for ranges > 2^31/2^63 (debug: panic → **process abort** across `extern "C"`; release: values shifted by 2^N): pcg32x8 (×2), squares32 scalar tail (×5), squares32x8 scalar remainder (×2), biski64x8 `apply_range`, philox64, threefish256, splitmix64 | ☑ fixed (Phase 7, this commit) |
 | — | Not a defect | PCG `inc|1` stream-seed (kept; LCG bijective for any odd inc; output-compat preserved → documented, not changed) | will not fix (rationale in report) |
 | — | Not a defect | MT19937 custom SplitMix-style seeding (design choice) | will not fix |
 | — | Note | cabi bulk fill (par_fill_reseed) ≠ scalar sequential stream (by design) | document in README |
@@ -50,7 +51,9 @@ C ABI probe results (Phase 0):
 - [x] Phase 5: A5 scalar overflow fixes (wrapping_add(min), assert min<=max, to_index u128 for len≥2^32,
       SIMD b64 inline randi wrap fixes) + A6 rand-bridge from_le_bytes + `Seed=[u8;8]` b64 impls
 - [x] Phase 6: A7 misc (choice contract, sampler validation, SeedGen, docs/README updates)
-- [ ] Phase 7: C ABI guards (null pointer early-returns, boundary conditions, stream-dup checks)
+- [x] Phase 7: C ABI hardening — 176 bulk entry points guarded (`count == 0 || ptr.is_null() ||
+      out.is_null()` → no-op, no state consumption) + A10 range-mapping fixes (10 full-span
+      branches + wrapping-add mapping at 8 scalar/remainder sites) + `tests/cabi_guards.rs` (39 tests)
 - [ ] Phase 8: full test matrix (`cargo test --locked` default / all-features), feature builds,
       post-fix benches, finalize report, version bump 1.0.0 → 1.0.1
 
@@ -124,6 +127,63 @@ C ABI probe results (Phase 0):
   16 sampler tests (panic contracts ×4 families ×{all-zero, negative,
   update-path, empty} + zero-entry legality). Suite counts: lib+sampler+
   seedgen 80 ok, doc 52 ok. Next: Phase 7 (C ABI guards).
+- 2026-10-25 Phase 7 DONE (this commit): C ABI hardening + new defect A10.
+  **Guards:** all 176 bulk cabi entry points now start with
+  `if count == 0 || ptr.is_null() || out.is_null() { return; }`
+  (78 extended, 98 newly inserted; script `guard_cabi.py` used
+  brace-matching body parsing + per-file brace balance assertion).
+  Effects, pre-guard referee evidence (stash/run/pop):
+  (1) null pointer deref → selected sites segmented/aborted
+  (`sfc32_next_f32s` at `src/cabi/prng/b32/sfc.rs:22`, abort `0xc0000409`);
+  (2) zero-count calls were NOT no-ops — several wrappers consumed one
+  generator word to compute the reseed base before checking count
+  (twin-stream test `zc_sfc32`, `zc_splitmix32` FAILED pre-guard, PASS
+  post-guard; `zc_xorshift64` was already fine — `fill_with` never calls the
+  closure at count 0). Now the full matrix of null/zero-count tests is green
+  and zero-count calls leave the generator state bit-identical.
+  **A10 (range mapping family), tests-first pre-patch run
+  (`cargo test --features cabi,simd --test cabi_guards -- --test-threads 1`):**
+  - 10 FAIL (full span → all-`i32::MIN`): `fs_sfc32x4`, `fs_sfc32x8`,
+    `fs_sfc32x16`, `fs_jsf32x16`, `fs_xoroshiro64ssx8`, `fs_xoroshiro64ssx16`,
+    `fs_xoshiro128ppx16`, `fs_xoshiro128ssx16`, `fs_philox32x4x4`,
+    `fs_squares32x8`.
+  - Process ABORT `0xc0000409` (overflow panic inside `extern "C"` cannot
+    unwind): `fs_scalar_squares32` (own scalar kernel
+    `squares.rs:484-487+496`), `fs_pcg32x8` / `near_full_pcg32x8`
+    (`pcg.rs:263/273`), `near_full_squares32x8` (`squares.rs:239/249`),
+    `near_full_span_b64_stays_in_range` (`splitmix.rs:100:38`),
+    `fs_b64_splitmix64`, `fs_b64_philox64` (`b64/philox.rs:122:13`),
+    `fs_b64_threefish256` (`b64/threefish.rs:76:44`), `b64_full_span`
+    (biski64x8 `apply_range`, `biski.rs:472`).
+  - Already exact pre-patch (documented, no change): scalar A5-routed sites
+    (sfc32, pcg32, mt19937, philox32 — passing), threefry32x4 and philox32
+    wrapn-kernels (ARITHMETICALLY EXACT — verified that wrapn elementwise
+    `Wrap` Add/Mul/Sub is **wrapping**, see `Wrap::new(u32::MAX) + 1 == 0`
+    in wrapn-0.10.0), and the SIMD-vector near-full paths (modular
+    `_add_epi32` lanes; passed).
+  **Fixes:** (a) 10 SIMD b32 sites: full-span branch
+  `min == i32::MIN && max == i32::MAX` routes through the type's own
+  `*_next_u32s(ptr, out.cast(), count)` and applies the exact bijective
+  top-bit-XOR map `*v = (*v as u32).wrapping_add(min as u32) as i32`
+  (uniform u32 → uniform i32 over the whole span; the lane mapping cannot
+  represent range == 2^32). (b) wrapping mapping at pcg32x8 (chunk + rem),
+  squares32 scalar tail (4+1 sites), squares32x8 scalar remainder (2),
+  biski64x8 `apply_range`, philox64, threefish256, splitmix64:
+  `((x * range) >> N) as uN` then `.wrapping_add(min as uN) as iN` —
+  quotient + min ≤ max always, so the modular closed form is exact for
+  near-full AND full spans with no branch (pcg32x8 u64 range math is
+  pure-scalar per-lane: no broadcast truncation exists → no branch needed).
+  Tests: `tests/cabi_guards.rs`, 39 tests (cabi tier + `#[cfg(simd)]`
+  sub-tier): full-span sanity (25 sites: both signs, ±sign-split window,
+  >½ distinct values), near-full in-range (incl. odd counts hitting the
+  scalar remainder loops), null/zero-count no-op twins, post-fullspan
+  bounded call, inclusive small range, degenerate one-value range.
+  Pre-patch detection matrix recorded above. Suite counts post-fix:
+  cabi_guards 39 ok; default-lib 59 ok; simd-lib 91 ok; sampler/seedgen-lib
+  80 ok; doc(cabi,simd) 61 ok; `cargo build --features full` clean. README
+  gained the FFI safety contract note (no-op guard conditions; min>max
+  contract violation aborts the process; exact i32/i64 range mapping).
+  Next: Phase 8 (full matrix, benches, finalize, version bump).
 
 
 ## Baseline benchmarks (pre-fix; criterion mean, release profile, `--noplot` same conditions)
@@ -155,18 +215,27 @@ Post-fix numbers go into "Performance changes" after the Phase 8 run. Raw snapsh
 
 ## Resume state (ephemeral checkpoint — update after every step)
 
-- Last completed: Phase 6 (A7 misc), commit pending. Next: Phase 7 (C ABI guards:
-  null pointer/out early-returns, boundary conditions, inter-chunk stream
-  duplication checks; cabi `*_rand_*` ranges are INCLUSIVE [min,max];
-  boundary samples valid).
+- Last completed: Phase 7 (C ABI guards + A10), commit `(this commit)`. Next: Phase 8 —
+  full `cargo test --locked` (default + all-features), feature-matrix builds
+  (rand, seedgen, sampler, cabi±simd), post-fix criterion benches vs
+  `bench-baseline/` → "Performance changes" section, finalize "Unfixed issues"
+  / "Compatibility impact" / "Remaining risks", version bump 1.0.0 → 1.0.1
+  (build.rs auto-updates the README version string).
+- Phase 7 test file: `tests/cabi_guards.rs` (cabi + simd tiers). Scratch
+  guard scripts (idempotent, kept as evidence):
+  `C:\Users\cets0\AppData\Local\Temp\opencode\guard_cabi.py` +
+  `fix_guard_indent.py`; pre-patch/refs logs `prepatch_test.log`,
+  `prepatch_main.log`, `prepatch_b64*.log`, `preguard_zc.log`,
+  `preguard_null.log` (same Temp dir).
 - Baseline benches: done, snapshotted to `bench-baseline/` (untracked) + table in this report.
 - Scratch probe crate: `C:\Users\cets0\AppData\Local\Temp\opencode\urng-fix-worker` (bins
   probe_wordv128, probe_ssx2, probe_shuffle, probe_ssx2_core; path-dep on this repo as `urng-fixed`).
 - CPU here: AVX-512VL+ capable (AVX512VL intrinsics do NOT crash here; risk is AVX2-only machines).
-- Phase 7 targets (from earlier reading): src/cabi/** — `fill_with(out, count, ...)`,
-  `par_fill_reseed32/64`; check null POINTER/OUT guards, count=0, INCLUSIVE range boundaries
-  [min,max] (Phase 0 probes confirmed valid boundary samples), alignment/NT-store paths,
-  stream-dup between consecutive chunk fills.
+- Phase 8 prep: cabi stream-dup check between consecutive chunk fills was NOT explicitly
+  deep-probed in Phase 7 beyond the twin-stream zero-count tests — if time permits, do a
+  quick consecutive-bulk-call continuation sanity in Phase 8. Note the baseline log
+  `prepatch_test.log` in Temp is UTF-8; `prepatch_main.log` may be UTF-16 when written via
+  PowerShell redirection of older runs.
 - Findings to include in the final report: SplitMix64 begins at `seed | 1` (documented
   deviation → cross-checks must use odd seeds); cabi ssx2 emitted xoshiro256++ (now **); criterion
   on this machine for `simd/randiv` ≈ 53.5 ns/8 lanes.

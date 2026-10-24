@@ -229,6 +229,8 @@ mod simd_chunks {
                 c_vec = _mm512_add_epi64(c_vec, k_step4);
             }
 
+            // Scalar tail: multiply-high mapping; the wrapping add keeps
+            // ranges > 2^31 exact (the lane mapping above is already modular).
             let rem = chunks32.into_remainder();
             let mut rem_chunks8 = rem.chunks_exact_mut(SQUARES32x8);
             for dst in rem_chunks8.by_ref() {
@@ -236,7 +238,8 @@ mod simd_chunks {
                 let mut result = [0u32; SQUARES32x8];
                 _mm256_storeu_si256(result.as_mut_ptr() as *mut _, v);
                 for j in 0..SQUARES32x8 {
-                    dst[j] = ((result[j] as u64 * range) >> 32) as i32 + min;
+                    dst[j] = (((result[j] as u64 * range) >> 32) as u32)
+                        .wrapping_add(min as u32) as i32;
                 }
                 c_vec = _mm512_add_epi64(c_vec, k_step);
             }
@@ -246,7 +249,8 @@ mod simd_chunks {
                 let mut tmp = [0u32; SQUARES32x8];
                 _mm256_storeu_si256(tmp.as_mut_ptr() as *mut _, v);
                 for j in 0..final_rem.len() {
-                    final_rem[j] = ((tmp[j] as u64 * range) >> 32) as i32 + min;
+                    final_rem[j] = (((tmp[j] as u64 * range) >> 32) as u32)
+                        .wrapping_add(min as u32) as i32;
                 }
             }
         }
@@ -351,6 +355,9 @@ const SQUARES32_PAR_CHUNK: usize = 4096;
 /// eliminating redundant adds. No loop-carried dependency within a batch.
 #[unsafe(no_mangle)]
 pub extern "C" fn squares32_next_u32s(ptr: *mut Squares32, out: *mut u32, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -398,6 +405,9 @@ pub extern "C" fn squares32_next_u32s(ptr: *mut Squares32, out: *mut u32, count:
 /// Uses a 4-way unrolled parallel kernel for high throughput.
 #[unsafe(no_mangle)]
 pub extern "C" fn squares32_next_f32s(ptr: *mut Squares32, out: *mut f32, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -450,6 +460,9 @@ pub extern "C" fn squares32_rand_i32s(
     min: i32,
     max: i32,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -469,13 +482,19 @@ pub extern "C" fn squares32_rand_i32s(
                 let mut y2 = y1 + k;
                 let mut y3 = y2 + k;
 
+                // All-scalar kernel: multiply-high mapping; the wrapping add
+                // keeps ranges > 2^31 (incl. the full span) exact.
                 let mut chunks4 = chunk.chunks_exact_mut(4);
                 for dst in chunks4.by_ref() {
                     let z3 = y3 + k;
-                    dst[0] = ((*Squares32::compute_yz(y0, y1) as u64 * range) >> 32) as i32 + min;
-                    dst[1] = ((*Squares32::compute_yz(y1, y2) as u64 * range) >> 32) as i32 + min;
-                    dst[2] = ((*Squares32::compute_yz(y2, y3) as u64 * range) >> 32) as i32 + min;
-                    dst[3] = ((*Squares32::compute_yz(y3, z3) as u64 * range) >> 32) as i32 + min;
+                    dst[0] = (((*Squares32::compute_yz(y0, y1) as u64 * range) >> 32) as u32)
+                        .wrapping_add(min as u32) as i32;
+                    dst[1] = (((*Squares32::compute_yz(y1, y2) as u64 * range) >> 32) as u32)
+                        .wrapping_add(min as u32) as i32;
+                    dst[2] = (((*Squares32::compute_yz(y2, y3) as u64 * range) >> 32) as u32)
+                        .wrapping_add(min as u32) as i32;
+                    dst[3] = (((*Squares32::compute_yz(y3, z3) as u64 * range) >> 32) as u32)
+                        .wrapping_add(min as u32) as i32;
                     y0 += k4;
                     y1 += k4;
                     y2 += k4;
@@ -484,7 +503,8 @@ pub extern "C" fn squares32_rand_i32s(
                 let rem = chunks4.into_remainder();
                 let mut yr = y0;
                 for dst in rem.iter_mut() {
-                    *dst = ((*Squares32::compute_yz(yr, yr + k) as u64 * range) >> 32) as i32 + min;
+                    *dst = (((*Squares32::compute_yz(yr, yr + k) as u64 * range) >> 32) as u32)
+                        .wrapping_add(min as u32) as i32;
                     yr += k;
                 }
             });
@@ -503,6 +523,9 @@ pub extern "C" fn squares32_rand_f32s(
     min: f32,
     max: f32,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -577,7 +600,7 @@ mod simd {
     /// This function utilizes AVX-512 SIMD and parallel processing for maximum throughput.
     #[unsafe(no_mangle)]
     pub extern "C" fn squares32x8_next_u32s(ptr: *mut Squares32x8, out: *mut u32, count: usize) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {
@@ -608,7 +631,7 @@ mod simd {
     /// This function utilizes AVX-512 SIMD and parallel processing for maximum throughput.
     #[unsafe(no_mangle)]
     pub extern "C" fn squares32x8_next_f32s(ptr: *mut Squares32x8, out: *mut f32, count: usize) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {
@@ -659,7 +682,18 @@ mod simd {
         min: i32,
         max: i32,
     ) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
+            return;
+        }
+        // The lane range mapping below cannot represent range == 2^32 (the
+        // range is carried in 32-bit lanes), so for the full i32 span use
+        // the exact top-bit-XOR mapping of the uniform u32 stream instead.
+        if min == i32::MIN && max == i32::MAX {
+            squares32x8_next_u32s(ptr, out.cast(), count);
+            let values = unsafe { std::slice::from_raw_parts_mut(out, count) };
+            for v in values {
+                *v = (*v as u32).wrapping_add(min as u32) as i32;
+            }
             return;
         }
         unsafe {
@@ -713,7 +747,7 @@ mod simd {
         min: f32,
         max: f32,
     ) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {

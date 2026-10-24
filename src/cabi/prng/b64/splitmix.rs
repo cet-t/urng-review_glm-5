@@ -58,6 +58,9 @@ where
 /// Fills `out[0..count]` with raw `u64` random values using parallel chunk generation.
 #[unsafe(no_mangle)]
 pub extern "C" fn splitmix64_next_u64s(ptr: *mut SplitMix64, out: *mut u64, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -68,6 +71,9 @@ pub extern "C" fn splitmix64_next_u64s(ptr: *mut SplitMix64, out: *mut u64, coun
 /// Fills `out[0..count]` with `f64` values in `[0, 1)` using parallel chunk generation.
 #[unsafe(no_mangle)]
 pub extern "C" fn splitmix64_next_f64s(ptr: *mut SplitMix64, out: *mut f64, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -84,11 +90,16 @@ pub extern "C" fn splitmix64_rand_i64s(
     min: i64,
     max: i64,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
         let range = (max as i128 - min as i128 + 1) as u128;
-        sm64_fill(buffer, rng.s, |x| ((x as u128 * range) >> 64) as i64 + min);
+        sm64_fill(buffer, rng.s, |x| {
+            (((x as u128 * range) >> 64) as u64).wrapping_add(min as u64) as i64
+        });
         rng.s += wrap!(count as u64) * SPLITMIX64_GAMMA;
     }
 }
@@ -101,6 +112,9 @@ pub extern "C" fn splitmix64_rand_f64s(
     min: f64,
     max: f64,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);

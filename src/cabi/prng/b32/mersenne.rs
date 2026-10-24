@@ -26,7 +26,7 @@ pub extern "C" fn mt19937_free(ptr: *mut Mt19937) {
 /// Fills the output buffer with the next random `u32` values.
 #[unsafe(no_mangle)]
 pub extern "C" fn mt19937_next_u32s(ptr: *mut Mt19937, out: *mut u32, count: usize) {
-    if count == 0 {
+    if count == 0 || ptr.is_null() || out.is_null() {
         return;
     }
     unsafe {
@@ -39,6 +39,9 @@ pub extern "C" fn mt19937_next_u32s(ptr: *mut Mt19937, out: *mut u32, count: usi
 /// Fills the output buffer with the next random `f32` values in the range [0, 1).
 #[unsafe(no_mangle)]
 pub extern "C" fn mt19937_next_f32s(ptr: *mut Mt19937, out: *mut f32, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -55,6 +58,9 @@ pub extern "C" fn mt19937_rand_i32s(
     min: i32,
     max: i32,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -73,6 +79,9 @@ pub extern "C" fn mt19937_rand_f32s(
     min: f32,
     max: f32,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -102,7 +111,7 @@ pub extern "C" fn sfmt19937_free(ptr: *mut Sfmt19937) {
 /// Fills the output buffer with the next random `u32` values.
 #[unsafe(no_mangle)]
 pub extern "C" fn sfmt19937_next_u32s(ptr: *mut Sfmt19937, out: *mut u32, count: usize) {
-    if count == 0 {
+    if count == 0 || ptr.is_null() || out.is_null() {
         return;
     }
     unsafe {
@@ -115,6 +124,9 @@ pub extern "C" fn sfmt19937_next_u32s(ptr: *mut Sfmt19937, out: *mut u32, count:
 /// Fills the output buffer with the next random `f32` values in the range [0, 1).
 #[unsafe(no_mangle)]
 pub extern "C" fn sfmt19937_next_f32s(ptr: *mut Sfmt19937, out: *mut f32, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -131,6 +143,9 @@ pub extern "C" fn sfmt19937_rand_i32s(
     min: i32,
     max: i32,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -149,6 +164,9 @@ pub extern "C" fn sfmt19937_rand_f32s(
     min: f32,
     max: f32,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -184,7 +202,7 @@ macro_rules! impl_sfmt_cabi {
 
         #[unsafe(no_mangle)]
         pub extern "C" fn $next_u32s_fn(ptr: *mut $ty, out: *mut u32, count: usize) {
-            if count == 0 {
+            if count == 0 || ptr.is_null() || out.is_null() {
                 return;
             }
             unsafe {
@@ -196,6 +214,9 @@ macro_rules! impl_sfmt_cabi {
 
         #[unsafe(no_mangle)]
         pub extern "C" fn $next_f32s_fn(ptr: *mut $ty, out: *mut f32, count: usize) {
+            if count == 0 || ptr.is_null() || out.is_null() {
+                return;
+            }
             unsafe {
                 let rng = &mut *ptr;
                 let buffer = from_raw_parts_mut(out, count);
@@ -211,6 +232,9 @@ macro_rules! impl_sfmt_cabi {
             min: i32,
             max: i32,
         ) {
+            if count == 0 || ptr.is_null() || out.is_null() {
+                return;
+            }
             unsafe {
                 let rng = &mut *ptr;
                 let buffer = from_raw_parts_mut(out, count);
@@ -228,6 +252,9 @@ macro_rules! impl_sfmt_cabi {
             min: f32,
             max: f32,
         ) {
+            if count == 0 || ptr.is_null() || out.is_null() {
+                return;
+            }
             unsafe {
                 let rng = &mut *ptr;
                 let buffer = from_raw_parts_mut(out, count);

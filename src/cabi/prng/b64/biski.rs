@@ -27,6 +27,9 @@ const BISKI64_PAR_CHUNK: usize = 4;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn biski64_next_u64s(ptr: *mut Biski64, out: *mut u64, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -48,6 +51,9 @@ pub extern "C" fn biski64_next_u64s(ptr: *mut Biski64, out: *mut u64, count: usi
 
 #[unsafe(no_mangle)]
 pub extern "C" fn biski64_next_f64s(ptr: *mut Biski64, out: *mut f64, count: usize) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -75,6 +81,9 @@ pub extern "C" fn biski64_rand_i64s(
     min: i64,
     max: i64,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -102,6 +111,9 @@ pub extern "C" fn biski64_rand_f64s(
     min: f64,
     max: f64,
 ) {
+    if count == 0 || ptr.is_null() || out.is_null() {
+        return;
+    }
     unsafe {
         let rng = &mut *ptr;
         let buffer = from_raw_parts_mut(out, count);
@@ -377,7 +389,8 @@ mod simd {
         }
     }
 
-    /// 64-bit range mapping: ((u as u128 * range) >> 64) as i64 + min.
+    /// 64-bit range mapping: ((u as u128 * range) >> 64) as u64, then a
+    /// wrapping add of `min` (exact for all ranges incl. the full span).
     /// No SIMD 128-bit multiply available in AVX-512F, so generate u64 in SIMD
     /// and apply range in scalar.
     #[cfg(target_arch = "x86_64")]
@@ -456,8 +469,10 @@ mod simd {
 
         #[inline(always)]
         unsafe fn apply_range(tmp: &[u64; 48], dst: &mut [i64], range: u128, min: i64) {
+            // Multiply-high mapping (quotient in [0, range)); the wrapping add
+            // keeps ranges > 2^63 (incl. the full span) exact.
             for (i, v) in dst.iter_mut().enumerate() {
-                *v = ((tmp[i] as u128 * range) >> 64) as i64 + min;
+                *v = (((tmp[i] as u128 * range) >> 64) as u64).wrapping_add(min as u64) as i64;
             }
         }
 
@@ -609,7 +624,7 @@ mod simd {
 
     #[unsafe(no_mangle)]
     pub extern "C" fn biski64x8_next_u64s(ptr: *mut Biski64x8, out: *mut u64, count: usize) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {
@@ -637,7 +652,7 @@ mod simd {
 
     #[unsafe(no_mangle)]
     pub extern "C" fn biski64x8_next_f64s(ptr: *mut Biski64x8, out: *mut f64, count: usize) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {
@@ -671,7 +686,7 @@ mod simd {
         min: i64,
         max: i64,
     ) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {
@@ -707,7 +722,7 @@ mod simd {
         min: f64,
         max: f64,
     ) {
-        if count == 0 {
+        if count == 0 || ptr.is_null() || out.is_null() {
             return;
         }
         unsafe {

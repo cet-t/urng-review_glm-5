@@ -277,6 +277,15 @@ void mt19937_free(void* ptr);
 > `_next_*` entry points one at a time. SIMD-tier bulk entry points fill
 > fixed-size chunks with runtime ISA dispatch.
 
+> **FFI safety contract:** every bulk entry point is a strict no-op (state
+> untouched) when `count == 0`, the generator pointer is null, or the output
+> pointer is null. `min > max` is a contract violation: it panics, and because
+> panics cannot unwind across `extern "C"`, it aborts the process — validate
+> ranges on the host side. `i32`/`i64` range mapping is exact for every range,
+> including the full span (`i32::MIN..=i32::MAX`). Floating-point bounds follow
+> the Rust-level `[min, max)` (`rand_fXXs` …) and `[min, max]` (`rand_iXXs`)
+> contracts.
+
 [SeedableRng]: https://docs.rs/rand_core/latest/rand_core/trait.SeedableRng.html
 [TryRng]: https://docs.rs/rand_core/latest/rand_core/trait.TryRng.html
 [try_fill_bytes]: https://docs.rs/rand_core/latest/rand_core/trait.TryRng.html#tymethod.try_fill_bytes
