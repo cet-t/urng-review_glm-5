@@ -207,7 +207,15 @@ pub mod simd {
             self.counter = _mm256_add_epi32(self.counter, _mm256_set1_epi32(1));
             self.a = _mm256_xor_si256(self.b, _mm256_srli_epi32(self.b, 9));
             self.b = _mm256_add_epi32(self.c, _mm256_slli_epi32(self.c, 3));
-            self.c = _mm256_add_epi32(unsafe { _mm256_rol_epi32(self.c, 21) }, tmp);
+            self.c = _mm256_add_epi32(
+                // rotl via shift-or so only AVX2 is required (AVX-512VL's
+                // `_mm256_rol_epi32` would be illegal on AVX2-only CPUs).
+                _mm256_or_si256(
+                    _mm256_slli_epi32(self.c, 21),
+                    _mm256_srli_epi32(self.c, 11),
+                ),
+                tmp,
+            );
             tmp
         }
 
@@ -220,12 +228,22 @@ pub mod simd {
         #[inline]
         #[target_feature(enable = "avx2")]
         pub(crate) unsafe fn randiv(&mut self, v_range: __m256i, v_min: __m256i) -> __m256i {
-            const MERGE_MASK: u8 = 0xAA;
+            // Per-lane uniform mapping, word-for-word the AVX2 version of the
+            // (correct) `Sfc32x4::randiv` below: even 32-bit lanes take the
+            // high word of `u_even * range_even`, odd lanes the high word of
+            // `u_odd * range_odd`, then `+ min`. The previous version blended
+            // via `_mm256_mask_blend_epi32` (an AVX-512VL intrinsic that is
+            // illegal under plain AVX2) and paired the odd `u` lanes with the
+            // *even* `range` lanes, producing wrong odd-lane results for any
+            // non-broadcast `v_range` (issue A8).
             let v_u32 = unsafe { self.nextuv() };
+            let hi = _mm256_set1_epi64x((0xffff_ffffu64 << 32) as i64);
             let res_even = _mm256_srli_epi64(_mm256_mul_epu32(v_u32, v_range), 32);
-            let prod_odd = _mm256_mul_epu32(_mm256_srli_epi64(v_u32, 32), v_range);
-            let merged = unsafe { _mm256_mask_blend_epi32(MERGE_MASK, res_even, prod_odd) };
-            _mm256_add_epi32(merged, v_min)
+            let prod_odd = _mm256_and_si256(
+                _mm256_mul_epu32(_mm256_srli_epi64(v_u32, 32), _mm256_srli_epi64(v_range, 32)),
+                hi,
+            );
+            _mm256_add_epi32(_mm256_or_si256(res_even, prod_odd), v_min)
         }
 
         #[inline]
@@ -316,7 +334,10 @@ pub mod simd {
             let prod_even = _mm512_mul_epu32(v_u32, v_range);
             let res_even = _mm512_srli_epi64(prod_even, 32);
             let v_u32_shifted = _mm512_srli_epi64(v_u32, 32);
-            let prod_odd = _mm512_mul_epu32(v_u32_shifted, v_range);
+            // The odd lanes' `u` words must pair with the odd lanes'
+            // `range` words, not the even ones (issue A8): shift `v_range`
+            // into the same lanes as the shifted `u`.
+            let prod_odd = _mm512_mul_epu32(v_u32_shifted, _mm512_srli_epi64(v_range, 32));
             let merged = _mm512_mask_blend_epi32(MERGE_MASK, res_even, prod_odd);
             _mm512_add_epi32(merged, v_min)
         }
@@ -358,6 +379,19 @@ mod tests {
 
     #[cfg(feature = "simd")]
     fn scalar_lanes(seed: u32) -> [Sfc32; SFC32X4] {
+        let mut seedgen = SplitMix32::new(seed);
+        std::array::from_fn(|_| Sfc32 {
+            a: seedgen.nextu().into(),
+            b: seedgen.nextu().into(),
+            c: seedgen.nextu().into(),
+            counter: 1.into(),
+        })
+    }
+
+    /// Wider lane set for `Sfc32x8`/`Sfc32x16`: identical seeding shape as
+    /// `scalar_lanes` (lane i = draws 3i..3i+2 of one SplitMix32).
+    #[cfg(feature = "simd")]
+    fn scalar_lanes_wide<const N: usize>(seed: u32) -> [Sfc32; N] {
         let mut seedgen = SplitMix32::new(seed);
         std::array::from_fn(|_| Sfc32 {
             a: seedgen.nextu().into(),
@@ -411,6 +445,103 @@ mod tests {
         for _ in 0..8 {
             let got: [f32; SFC32X4] = unsafe { std::mem::transmute(vector.nextfv()) };
             let want: [f32; SFC32X4] = std::array::from_fn(|i| scalars[i].nextf());
+            assert_eq!(got, want);
+        }
+    }
+
+    // --- Regression tests for the per-lane uniform mapping of the wide
+    // variants (issues A2 + A8). Per-lane DISTINCT `scale`/`min` vectors are
+    // essential: a broadcast scale is insensitive to odd/even lane pairing.
+
+    /// The lane mapping of `randiv`/`to_randi`, as plain scalar math: the
+    /// high word of `u * scale` plus `min` (wrapping).
+    #[cfg(feature = "simd")]
+    fn ref_randi(u: u32, scale: u32, min: u32) -> u32 {
+        ((u as u64 * scale as u64) >> 32).wrapping_add(min as u64) as u32
+    }
+
+    #[cfg(feature = "simd")]
+    #[test]
+    fn sfc32x8_lanes_match_scalar() {
+        if !std::arch::is_x86_feature_detected!("avx2") {
+            eprintln!("skipping Sfc32x8 lane test: avx2 not detected");
+            return;
+        }
+        let mut vector = unsafe { Sfc32x8::new(10) };
+        let mut scalars = scalar_lanes_wide::<SFC32X8>(10);
+        for _ in 0..64 {
+            let got = vector.nextu();
+            let want: [u32; SFC32X8] = std::array::from_fn(|i| scalars[i].nextu());
+            assert_eq!(got, want);
+        }
+    }
+
+    #[cfg(feature = "simd")]
+    #[test]
+    fn sfc32x8_randiv_per_lane_scale_matches_scalar_reference() {
+        if !std::arch::is_x86_feature_detected!("avx2") {
+            eprintln!("skipping Sfc32x8 randiv lane test: avx2 not detected");
+            return;
+        }
+        // Scales of adjacent lanes differ by ~2^29, so an even/odd pairing
+        // slip changes the high word with near-certainty per draw.
+        let scales: [i32; SFC32X8] =
+            std::array::from_fn(|i| (((i + 1) * 0x1FFF_FFF1) & 0x7FFF_FFFF) as i32);
+        let mins: [i32; SFC32X8] = std::array::from_fn(|i| i as i32 - 3);
+        let v_range = unsafe { std::mem::transmute::<[i32; SFC32X8], __m256i>(scales) };
+        let v_min = unsafe { std::mem::transmute::<[i32; SFC32X8], __m256i>(mins) };
+
+        let mut vector = unsafe { Sfc32x8::new(11) };
+        let mut scalars = scalar_lanes_wide::<SFC32X8>(11);
+        for _ in 0..64 {
+            let got: [u32; SFC32X8] =
+                unsafe { std::mem::transmute(vector.randiv(v_range, v_min)) };
+            let want: [u32; SFC32X8] = std::array::from_fn(|i| {
+                let u = scalars[i].nextu();
+                ref_randi(u, scales[i] as u32, mins[i] as u32)
+            });
+            assert_eq!(got, want);
+        }
+    }
+
+    #[cfg(feature = "simd")]
+    #[test]
+    fn sfc32x16_lanes_match_scalar() {
+        if !std::arch::is_x86_feature_detected!("avx512f") {
+            eprintln!("skipping Sfc32x16 lane test: avx512f not detected");
+            return;
+        }
+        let mut vector = unsafe { Sfc32x16::new(10) };
+        let mut scalars = scalar_lanes_wide::<SFC32X16>(10);
+        for _ in 0..64 {
+            let got = vector.nextu();
+            let want: [u32; SFC32X16] = std::array::from_fn(|i| scalars[i].nextu());
+            assert_eq!(got, want);
+        }
+    }
+
+    #[cfg(feature = "simd")]
+    #[test]
+    fn sfc32x16_randiv_per_lane_scale_matches_scalar_reference() {
+        if !std::arch::is_x86_feature_detected!("avx512f") {
+            eprintln!("skipping Sfc32x16 randiv lane test: avx512f not detected");
+            return;
+        }
+        let scales: [i32; SFC32X16] =
+            std::array::from_fn(|i| (((i + 1) * 0x0FFF_FFF3) & 0x7FFF_FFFF) as i32);
+        let mins: [i32; SFC32X16] = std::array::from_fn(|i| i as i32 - 8);
+        let v_range = unsafe { std::mem::transmute::<[i32; SFC32X16], __m512i>(scales) };
+        let v_min = unsafe { std::mem::transmute::<[i32; SFC32X16], __m512i>(mins) };
+
+        let mut vector = unsafe { Sfc32x16::new(11) };
+        let mut scalars = scalar_lanes_wide::<SFC32X16>(11);
+        for _ in 0..64 {
+            let got: [u32; SFC32X16] =
+                unsafe { std::mem::transmute(vector.randiv(v_range, v_min)) };
+            let want: [u32; SFC32X16] = std::array::from_fn(|i| {
+                let u = scalars[i].nextu();
+                ref_randi(u, scales[i] as u32, mins[i] as u32)
+            });
             assert_eq!(got, want);
         }
     }

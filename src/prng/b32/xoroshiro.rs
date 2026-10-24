@@ -112,14 +112,29 @@ pub mod simd {
 
             unsafe {
                 let mult = _mm256_set1_epi32(0x9E3779BBu32 as i32);
-                let result = _mm256_mullo_epi32(s0, mult);
+                let mullo = _mm256_mullo_epi32(s0, mult);
+                // The ** scrambler: the output is `rotl(mullo, 5) * 5`, the
+                // same as the scalar `Xoroshiro64Ss` (issue A9: the vector
+                // version previously returned the plain mullo, diverging
+                // from the scalar stream). Both ops are AVX2-only.
+                let rotl5 = _mm256_or_si256(
+                    _mm256_slli_epi32(mullo, 5),
+                    _mm256_srli_epi32(mullo, 27),
+                );
+                let result = _mm256_add_epi32(rotl5, _mm256_slli_epi32(rotl5, 2));
 
                 s1 = _mm256_xor_si256(s1, s0);
                 self.s0 = _mm256_xor_si256(
-                    _mm256_xor_si256(_mm256_rol_epi32(s0, 26), s1),
-                    _mm256_slli_epi32(s1, 9),
+                    _mm256_or_si256(
+                        _mm256_slli_epi32(s0, 26),
+                        _mm256_srli_epi32(s0, 6),
+                    ),
+                    _mm256_xor_si256(s1, _mm256_slli_epi32(s1, 9)),
                 );
-                self.s1 = _mm256_rol_epi32(s1, 13);
+                self.s1 = _mm256_or_si256(
+                    _mm256_slli_epi32(s1, 13),
+                    _mm256_srli_epi32(s1, 19),
+                );
 
                 result
             }
@@ -180,7 +195,12 @@ pub mod simd {
 
             unsafe {
                 let mult = _mm512_set1_epi32(0x9E3779BBu32 as i32);
-                let result = _mm512_mullo_epi32(s0, mult);
+                let mullo = _mm512_mullo_epi32(s0, mult);
+                // The ** scrambler: output = `rotl(mullo, 5) * 5`, matching
+                // the scalar `Xoroshiro64Ss` (issue A9: this vector variant
+                // previously returned the plain mullo). `_mm512_rol_epi32`
+                // is AVX512F-tier here, matching this type's target feature.
+                let result = _mm512_mullo_epi32(_mm512_rol_epi32(mullo, 5), _mm512_set1_epi32(5));
 
                 s1 = _mm512_xor_si512(s1, s0);
                 self.s0 = _mm512_xor_si512(
@@ -202,4 +222,62 @@ mod tests {
     crate::safe_test! { Xoroshiro64Ss }
     #[cfg(all(feature = "simd", target_feature = "avx512f"))]
     crate::unsafe_test! { Xoroshiro64Ssx16 }
+
+    /// Regression test for issue A9: the vector variants returned the plain
+    /// `s0 * 0x9E3779BB` product while the scalar `Xoroshiro64Ss` applies
+    /// the ** scrambler `(x).rotl(5) * 5`, so SIMD and scalar streams
+    /// diverged from the very first draw. (Also covers A2: the AVX2 tier of
+    /// `Xoroshiro64Ssx8` previously used the AVX-512VL
+    /// `_mm256_rol_epi32`.)
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+    #[test]
+    fn xoroshiro64ssx8_lanes_match_scalar() {
+        use crate::RngV;
+
+        if !std::arch::is_x86_feature_detected!("avx2") {
+            eprintln!("skipping Xoroshiro64Ssx8 lane test: avx2 not detected");
+            return;
+        }
+        // Seeding contract of `Xoroshiro64Ssx8::new`: lane i gets
+        // s0 = draw 2i, s1 = draw 2i+1 (contiguous pairs).
+        let mut scalars: [Xoroshiro64Ss; 8] = {
+            let mut seedgen = SplitMix32::new(22);
+            std::array::from_fn(|_| Xoroshiro64Ss {
+                s: wrap![seedgen.nextu(), seedgen.nextu()],
+            })
+        };
+
+        let mut vector = unsafe { Xoroshiro64Ssx8::new(22) };
+        for _ in 0..128 {
+            let got: [u32; 8] = unsafe { std::mem::transmute(vector.nextuv()) };
+            let want: [u32; 8] = std::array::from_fn(|i| scalars[i].nextu());
+            assert_eq!(got, want);
+        }
+    }
+
+    /// Same contract for the AVX-512 tier (issue A9 in the 16-lane variant;
+    /// its `_mm512_rol_epi32` is within the type's `avx512f` requirement).
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+    #[test]
+    fn xoroshiro64ssx16_lanes_match_scalar() {
+        use crate::RngV;
+
+        if !std::arch::is_x86_feature_detected!("avx512f") {
+            eprintln!("skipping Xoroshiro64Ssx16 lane test: avx512f not detected");
+            return;
+        }
+        let mut scalars: [Xoroshiro64Ss; 16] = {
+            let mut seedgen = SplitMix32::new(23);
+            std::array::from_fn(|_| Xoroshiro64Ss {
+                s: wrap![seedgen.nextu(), seedgen.nextu()],
+            })
+        };
+
+        let mut vector = unsafe { Xoroshiro64Ssx16::new(23) };
+        for _ in 0..128 {
+            let got: [u32; 16] = unsafe { std::mem::transmute(vector.nextuv()) };
+            let want: [u32; 16] = std::array::from_fn(|i| scalars[i].nextu());
+            assert_eq!(got, want);
+        }
+    }
 }

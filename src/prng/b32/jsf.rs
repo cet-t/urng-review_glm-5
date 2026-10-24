@@ -105,8 +105,22 @@ pub mod simd {
         #[inline]
         fn nextuv(&mut self) -> __m256i {
             unsafe {
-                let e = _mm256_sub_epi32(self.a, _mm256_rol_epi32(self.b, 27));
-                self.a = _mm256_xor_si256(self.b, _mm256_rol_epi32(self.c, 17));
+                // rotl via shift-or so only AVX2 is required (the AVX-512VL
+                // `_mm256_rol_epi32` would be illegal on AVX2-only CPUs).
+                let e = _mm256_sub_epi32(
+                    self.a,
+                    _mm256_or_si256(
+                        _mm256_slli_epi32(self.b, 27),
+                        _mm256_srli_epi32(self.b, 5),
+                    ),
+                );
+                self.a = _mm256_xor_si256(
+                    self.b,
+                    _mm256_or_si256(
+                        _mm256_slli_epi32(self.c, 17),
+                        _mm256_srli_epi32(self.c, 15),
+                    ),
+                );
                 self.b = _mm256_add_epi32(self.c, self.d);
                 self.c = _mm256_add_epi32(self.d, e);
                 self.d = _mm256_add_epi32(e, self.a);
@@ -185,4 +199,42 @@ mod tests {
     crate::unsafe_test! { Jsf32x8 }
     #[cfg(all(feature = "simd", target_feature = "avx512f"))]
     crate::unsafe_test! { Jsf32x16 }
+
+    /// Regression test for the AVX2 tier (issue A2): `Jsf32x8::nextuv`
+    /// previously used the AVX-512VL intrinsic `_mm256_rol_epi32`, which
+    /// crashes with SIGILL on AVX2-only CPUs. This test only compiles/runs
+    /// when the AVX2 path is actually exercised; on such a CPU the previous
+    /// code aborted inside the first call (the assert ordering below pins
+    /// outputs lane-exactly, so both the rotate rewrite and any regression
+    /// in the JSF stepping are caught).
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+    #[test]
+    fn jsf32x8_lanes_match_scalar() {
+        use crate::RngV;
+
+        if !std::arch::is_x86_feature_detected!("avx2") {
+            eprintln!("skipping Jsf32x8 lane test: avx2 not detected");
+            return;
+        }
+        // SoA seeding contract of `Jsf32x8::new`: lane i gets
+        // (a = const, b = draw i, c = draw 8+i, d = draw 16+i).
+        let mut seedgen = SplitMix32::new(21);
+        let mut draws = [0u32; 24];
+        for d in draws.iter_mut() {
+            *d = seedgen.nextu();
+        }
+        let mut scalars: [Jsf32; 8] = std::array::from_fn(|i| Jsf32 {
+            a: wrap!(0xf1ea5eed),
+            b: wrap!(draws[i]),
+            c: wrap!(draws[8 + i]),
+            d: wrap!(draws[16 + i]),
+        });
+
+        let mut vector = unsafe { Jsf32x8::new(21) };
+        for _ in 0..64 {
+            let got: [u32; 8] = unsafe { std::mem::transmute(vector.nextuv()) };
+            let want: [u32; 8] = std::array::from_fn(|i| scalars[i].nextu());
+            assert_eq!(got, want);
+        }
+    }
 }
