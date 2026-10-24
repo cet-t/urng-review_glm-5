@@ -30,7 +30,6 @@ AVX generators expose a bulk-generation API and are listed separately; they requ
 | `Sfmt132049`    | SFMT             | $2^{132049}-1$   |
 | `Sfmt216091`    | SFMT             | $2^{216091}-1$   |
 | `Sfc32`         | SFC32            | $2^{127}-1$      |
-| `Sfc32x4`       | SFC32 x4         | $2^{127}-1$      |
 | `Pcg32`         | PCG-XSH-RR       | $2^{64}$         |
 | `Philox32x4`    | Philox 4x32      | -                |
 | `SplitMix32`    | SplitMix32       | $2^{32}$         |
@@ -83,6 +82,9 @@ These generators use the portable `wide` crate and expose safe `nextu`, `nextf`,
 | `Xorwowx*`        | XORWOW          | 4×/8×/16×`u32`  |
 | `Xoshiro128Ppx*`  | xoshiro128++    | 4×/8×/16×`u32`  |
 | `Xoshiro128Ssx*`  | xoshiro128\*\*  | 4×/8×/16×`u32`  |
+| `Threefry32x2x*`  | Threefry 2x32   | 4×/8×/16×`u32`  |
+| `Threefry32x4x*`  | Threefry 4x32   | 4×/8×/16×`u32`  |
+| `Squares32x*`     | Squares         | 4×/8×`u32`      |
 
 Example:
 
@@ -96,7 +98,15 @@ let floats: [f32; 16] = rng.nextf();
 
 ### SIMD Generators (AVX)
 
-These generators expose a bulk-generation API and require AVX support at runtime.
+These generators expose a bulk-generation API through the `simd` feature and require the
+listed ISA tier **at compile time** (the types are `unsafe` and gated with
+`#[target_feature]`). Only the C ABI performs runtime ISA detection.
+
+#### SSE2 (x86_64 baseline, requires the `simd` feature)
+
+| Struct    | Algorithm  | Output  |
+| --------- | ---------- | ------- |
+| `Sfc32x4` | SFC32 x4   | 4×`u32` |
 
 #### AVX2 (`avx2`)
 
@@ -124,6 +134,22 @@ These generators expose a bulk-generation API and require AVX support at runtime
 | `Cet64x8`          | CET64 x8            | 8×`u64`  |
 | `Cet256x2`         | CET256 x2           | 2×`u64`  |
 | `Biski64x8`        | Biski64 x8          | 8×`u64`  |
+
+### Determinism / compatibility notes
+
+These behaviors are deliberate and kept (documented rather than changed; see
+REVIEW.md A7 / the project fix report for the rationale):
+
+- `Pcg32` derives its stream increment from the LCG `inc` without applying the
+  official PCG `| 1` fixup. The output sequence for a given
+  (seed, stream) pair therefore differs from official PCG implementations,
+  while remaining full-period and bijective.
+- `Mt19937` / SFMT generators initialize their state through this crate's own
+  SplitMix-style seeding from the user seed. Outputs are **not** comparable
+  with reference MT19937/SFMT implementations for the same seed, and no
+  official golden-vector cross-check is claimed for them.
+- The scalar C ABI bulk entry points do not reproduce the scalar sequential
+  stream (see the note in the C ABI section below).
 
 ## Sampler
 
@@ -235,11 +261,21 @@ This crate exports a C-compatible ABI generic interface. Each generator has corr
 Example for `Mt19937`:
 
 ```c
-void* mt19937_new(uint32_t seed, size_t warm);
+void* mt19937_new(uint32_t seed);
 void mt19937_next_u32s(void* ptr, uint32_t* out, size_t count);
 void mt19937_rand_f32s(void* ptr, float* out, size_t count, float min, float max);
 void mt19937_free(void* ptr);
 ```
+
+> **Note on bulk generation:** the scalar C ABI bulk entry points (`*_next_uXXs`,
+> `*_rand_*s`) use parallel chunk reseeding internally
+> (`par_fill_reseed32/64`: the buffer is split into chunks, each seeded from
+> the parent generator via a SplitMix finalizer). A single bulk call therefore
+> does **not** produce the same stream as repeated per-word scalar calls, and
+> two consecutive bulk calls do not continue one another's chunk streams.
+> Callers who need the plain sequential stream should call the per-word
+> `_next_*` entry points one at a time. SIMD-tier bulk entry points fill
+> fixed-size chunks with runtime ISA dispatch.
 
 [SeedableRng]: https://docs.rs/rand_core/latest/rand_core/trait.SeedableRng.html
 [TryRng]: https://docs.rs/rand_core/latest/rand_core/trait.TryRng.html

@@ -88,8 +88,14 @@ impl_seed_word!(64, 0x9E37_79B9_7F4A_7C15, 0xff51_afd7_ed55_8ccd, [33, 29]);
 /// Hardware-noise-assisted seed generator.
 ///
 /// Wraps an existing [`Rng`] and mixes hardware noise (RDSEED/RDRAND on x86/x86_64,
-/// timestamp fallback elsewhere) into a Murmur3-style hash to produce reproducibly
-/// high-entropy seed values, in the RNG's own word width (`u32` or `u64`).
+/// timestamp fallback elsewhere) into a Murmur3-style hash to produce high-entropy
+/// seed values, in the RNG's own word width (`u32` or `u64`).
+///
+/// The output depends on raw per-call hardware/timestamp values: consecutive
+/// runs are *not* reproducible (deterministic seeding is available instead via
+/// the plain `new(seed)` / SplitMix constructors). The mixing layer whitens the
+/// raw noise so that even weakly random hardware sources produce
+/// well-distributed seed words.
 ///
 /// # Examples
 ///
@@ -212,7 +218,11 @@ macro_rules! impl_rd {
             #[cfg(any($(target_arch = $arches),+))]
             unsafe fn [<rdseed $bits _once>]() -> Option<[<u $bits>]> {
                 let mut value = 0 as [<u $bits>];
-                for _ in 0..4 {
+                // 10 retries = the same upper bound Intel's ISA docs suggest
+                // before treating the instruction as unavailable (issue A7:
+                // the previous value of 4 could give up while RDSEED was in
+                // its documented temporary-exhaustion backoff window).
+                for _ in 0..10 {
                     if unsafe { [<_rdseed $bits _step>](&mut value) } == 1 {
                         return Some(value);
                     }
@@ -223,7 +233,8 @@ macro_rules! impl_rd {
             #[cfg(any($(target_arch = $arches),+))]
             unsafe fn [<rdrand $bits _once>]() -> Option<[<u $bits>]> {
                 let mut value = 0 as [<u $bits>];
-                for _ in 0..4 {
+                // Same 10-retry budget as the RDSEED path above.
+                for _ in 0..10 {
                     if unsafe { [<_rdrand $bits _step>](&mut value) } == 1 {
                         return Some(value);
                     }

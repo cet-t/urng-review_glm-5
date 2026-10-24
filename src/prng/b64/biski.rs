@@ -58,7 +58,7 @@ pub mod simd {
     use crate::_internal::{i2f_bits, u2f_01};
     use crate::SplitMix64;
 
-    /// A 4-way SIMD Biski64 generator using AVX512 512-bit intrinsics.
+    /// An 8-way SIMD Biski64 generator using AVX-512 512-bit intrinsics.
     ///
     /// # Example
     /// ```no_run
@@ -104,11 +104,10 @@ pub mod simd {
             }
         }
 
-        /// Generates 4 random `u64` values simultaneously and writes them to `out`.
+        /// Generates 8 random `u64` values simultaneously.
         ///
         /// # Safety
-        /// `out` must point to a valid buffer of at least 8 `u64` values.
-        /// Requires AVX512 support.
+        /// Requires AVX512 support (the CPU must support `avx512f`).
         #[inline(always)]
         pub unsafe fn nextu(&mut self) -> [u64; 8] {
             unsafe {

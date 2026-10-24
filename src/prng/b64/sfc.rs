@@ -61,9 +61,12 @@ pub mod simd {
     use crate::_internal::{i2f_bits, u2f_01};
     use crate::prng::b64::SplitMix64;
 
-    // --- Sfc64x4 (AVX2) ---
+    // --- Sfc64x8 (AVX-512F) ---
 
-    /// A 4-way SIMD SFC64 generator using AVX2 256-bit intrinsics.
+    /// An 8-way SIMD SFC64 generator using AVX-512 512-bit intrinsics.
+    ///
+    /// Requires the `avx512f` target feature at compile time (see
+    /// `# Safety`), not just "any AVX support at runtime".
     ///
     /// # Example
     /// ```no_run
@@ -108,11 +111,10 @@ pub mod simd {
             }
         }
 
-        /// Generates 4 random `u64` values simultaneously and writes them to `out`.
+        /// Generates 8 random `u64` values simultaneously.
         ///
         /// # Safety
-        /// `out` must point to a valid buffer of at least 8 `u64` values.
-        /// Requires AVX512 support.
+        /// Requires AVX512 support (the CPU must support `avx512f`).
         #[inline(always)]
         pub unsafe fn nextu(&mut self) -> [u64; 8] {
             unsafe {

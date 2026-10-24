@@ -22,6 +22,12 @@ pub struct Bst64<'a, R: Rng<Word = u64> + 'a> {
 
 impl<'a, R: Rng<Word = u64> + 'a> Bst64<'a, R> {
     /// Creates a new sampler with the given random number generator and weights.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any weight is negative/NaN, the slice is empty, or the total
+    /// weight is zero (see [`crate::sampler::validate_weights`]). Previously
+    /// such input silently pinned `sample()` to index 0.
     pub fn new(rng: &'a mut R, weights: &[f64]) -> Self {
         Self {
             rng,
@@ -30,6 +36,7 @@ impl<'a, R: Rng<Word = u64> + 'a> Bst64<'a, R> {
     }
 
     fn build_cumulative(weights: &[f64]) -> Vec<f64> {
+        crate::sampler::validate_weights(weights);
         let mut cumulative = Vec::with_capacity(weights.len());
         let mut sum = 0.0;
         for &w in weights {
@@ -69,5 +76,38 @@ mod tests {
         let mut sampler = Bst64::new(&mut rng, &[0.1, 1.0, 10.0, 100.0]);
         let ones = (0..100_000).filter(|_| sampler.sample() == 1).count();
         assert_eq!(ones, 911);
+    }
+
+    /// Issue A7: zero-total weights previously pinned `sample()` to index 0.
+    #[test]
+    #[should_panic(expected = "sampler weights")]
+    fn bst64_all_zero_weights_panic() {
+        let mut rng = Mt1993764::new(2);
+        let _ = Bst64::new(&mut rng, &[0.0f64, 0.0, 0.0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "sampler weights")]
+    fn bst64_negative_weight_panics() {
+        let mut rng = Mt1993764::new(2);
+        let _ = Bst64::new(&mut rng, &[2.0f64, -1.0]);
+    }
+
+    /// `weights()` runs the same validation as `new`.
+    #[test]
+    #[should_panic(expected = "sampler weights")]
+    fn bst64_weights_update_validates() {
+        let mut rng = Mt1993764::new(2);
+        let mut sampler = Bst64::new(&mut rng, &[1.0f64, 1.0]);
+        sampler.weights(&[]);
+    }
+
+    /// Zero weights on individual outcomes are fine (never sampled).
+    #[test]
+    fn bst64_zero_entries_never_selected() {
+        let mut rng = Mt1993764::new(3);
+        let mut sampler = Bst64::new(&mut rng, &[0.0f64, 1.0]);
+        let hits0 = (0..2000).filter(|_| sampler.sample() == 0).count();
+        assert_eq!(hits0, 0);
     }
 }

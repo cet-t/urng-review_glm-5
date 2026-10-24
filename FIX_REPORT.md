@@ -20,10 +20,10 @@ never as fixed. No test is deleted or disabled to hide a defect.
 | A2 | High | "AVX2 tier" code uses AVX512VL intrinsics: `_mm256_rol_epi32` (jsf.rs:108–109, sfc.rs:210, xoroshiro.rs:119/122), `_mm256_mask_blend_epi32` (rngv.rs:77, sfc.rs:227) → SIGILL on AVX2-only CPUs | ☑ fixed (Phase 2, `116eb79`) |
 | A3 | High | `Shuffle::shuffle/shuffled` biased Fisher–Yates: draw range never shrinks (baseline: len=3 P(identity)=0.2211 vs 1/6) | ☑ fixed (Phase 3, `ed464ba`) |
 | A4 | Medium | `lib.rs` `include_str!("../Readme.md")` case mismatch vs actual `README.md` → Linux build break | ☑ fixed (Phase 4, `fc6fba2`) |
-| A5 | High | Scalar `Word::to_randi/to_index` overflow (`randi(i32::MIN,i32::MAX)` debug panic/garbage; `to_index(len>2^32)` u64 wrap); plus missing `wrapping_add(min)` in b64 SIMD inline randi (Sfc64x8 sfc.rs, Cet256x2 cet.rs) | ☑ fixed (Phase 5, this commit) |
-| A6 | Medium | `rand` bridge `impl_rand_trait!` uses BE `u32::from_be_bytes`-style carry for u64 words (`Seed=[u8;4]` truncates); b64 rand impls missing/incorrect | ☑ fixed (Phase 5, this commit) |
-| A7 | Medium | misc: `choice(empty)` panic type, sampler validation (Alias all-zero weights returns nonsense silently), SeedGen retry loop, doc mismatches (Sfc64x8 doc says 4 lanes, README gaps) | ☐ planned (Phase 6) |
-| A8 | High | `WordV::to_randi` for `__m128i` (rngv.rs:36–52): odd lanes take **low** word of product and pair odd u×even scale → garbage for non-broadcast scale. `__m256i/__m512i`: odd lanes pair u_i×scale_{i-1} (low word OK, pairing wrong). Reference implementation already in-repo: `Sfc32x4::randiv` (sfc.rs:124–135). Verified: with broadcast scale (current C ABI usage) `__m256i/x16` high-word paths are correct; `__m128i` even with broadcast scale takes low word for odd lanes — **needs re-probe to confirm magnitude of impact** | ☑ fixed (Phase 2, `116eb79`) |
+| A5 | High | Scalar `Word::to_randi/to_index` overflow (`randi(i32::MIN,i32::MAX)` debug panic/garbage; `to_index(len>2^32)` u64 wrap); plus missing `wrapping_add(min)` in b64 SIMD inline randi (Sfc64x8 sfc.rs, Cet256x2 cet.rs) | ☑ fixed (Phase 5, `1be3cf0`) |
+| A6 | Medium | `rand` bridge `impl_rand_trait!` uses BE `u32::from_be_bytes`-style carry for u64 words (`Seed=[u8;4]` truncates); b64 rand impls missing/incorrect | ☑ fixed (Phase 5, `1be3cf0`) |
+| A7 | Medium | misc: `choice(empty)` panic type, sampler validation (Alias all-zero weights returns nonsense silently), SeedGen retry loop, doc mismatches (Sfc64x8 doc says 4 lanes, README gaps) | ☑ fixed (Phase 6, this commit) |
+| A8 | High | `WordV::to_randi` for `__m128i` (rngv.rs:36–52): odd lanes take **low** word of product and pair odd u×even scale → garbage for non-broadcast scale. `__m256i/__m512i`: odd lanes pair u_i×scale_{i-1} (low word OK, pairing wrong). Reference implementation already in-repo: `Sfc32x4::randiv` (sfc.rs:124–135). Verified: with broadcast scale (current C ABI usage) `__m256i/x16` high-word paths are correct; `__m128i` even with broadcast scale takes low word for odd lanes — **needs re-probe to confirm magnitude of impact** | ☑ fixed (Phase 2, `116eb79`) — note: broadcast-scale precondition is now moot, the mapping is genuinely per-lane correct and tested per-lane |
 | A9 | High (new) | simd-feature vector SIMD variants of `Xoroshiro64Ss` in `xoroshiro.rs`: SIMD variants return `s0*0x9E3779BB` directly without the scalar path's `rotl(5) * 5` final step, causing SIMD and scalar streams to diverge from the first output | ☑ fixed (Phase 2, `116eb79`; found during Phase 2 tests) |
 | — | Not a defect | PCG `inc|1` stream-seed (kept; LCG bijective for any odd inc; output-compat preserved → documented, not changed) | will not fix (rationale in report) |
 | — | Not a defect | MT19937 custom SplitMix-style seeding (design choice) | will not fix |
@@ -49,7 +49,7 @@ C ABI probe results (Phase 0):
 - [x] Phase 4: A4 README include path case fix (+ doc build check)
 - [x] Phase 5: A5 scalar overflow fixes (wrapping_add(min), assert min<=max, to_index u128 for len≥2^32,
       SIMD b64 inline randi wrap fixes) + A6 rand-bridge from_le_bytes + `Seed=[u8;8]` b64 impls
-- [ ] Phase 6: A7 misc (choice contract, sampler validation, SeedGen, docs/README updates)
+- [x] Phase 6: A7 misc (choice contract, sampler validation, SeedGen, docs/README updates)
 - [ ] Phase 7: C ABI guards (null pointer early-returns, boundary conditions, stream-dup checks)
 - [ ] Phase 8: full test matrix (`cargo test --locked` default / all-features), feature builds,
       post-fix benches, finalize report, version bump 1.0.0 → 1.0.1
@@ -81,8 +81,7 @@ C ABI probe results (Phase 0):
   52 default-lib tests pass. Next: Phase 4 (A4 README include).
 - 2026-10-25 Phase 4 DONE (`fc6fba2`): A4 — `lib.rs` now `include_str!("../README.md")` (correct
   case). `cargo doc` + 44 doctests pass.
-- 2026-10-25 Phase 5 DONE (this commit): A5 — scalar `Word::to_randi`: `assert!(min <= max)` +
-  `wrapping_add(min)` (full-span `randi(i32::MIN, i32::MAX)` exact, panic contract consistent in
+- 2026-10-25 Phase 5 DONE (this commit): A5 — scalar `Word::to_randi`: `assert!(min <= max)` +  `wrapping_add(min)` (full-span `randi(i32::MIN, i32::MAX)` exact, panic contract consistent in
   both profiles); `Word::to_index` takes the 128-bit path only for `len > 2^32` (branch is
   loop-invariant at call sites; small-len fast path unchanged). b64 SIMD inline `randi`
   (Sfc64x8, Biski64x8, Cet64x8, Cet256x2) got the same assert + wrapping mapping. A6 — rand
@@ -95,6 +94,36 @@ C ABI probe results (Phase 0):
   and min>max panics; LE seed bridges for b32 + b64 (both seed words verified). Counts:
   default-lib 57 ok; simd-lib 89 ok; simd+rand-lib 93 ok; doc+rand 44 ok; `cargo build
   --features rand` clean. Next: Phase 6 (A7 misc).
+- 2026-10-25 Phase 6 DONE (this commit): A7 misc —
+  (1) `choice`/`choice_mut` empty-slice behavior is now a **documented panic**
+  (`# Panics` sections + trait-level note explaining the deliberate
+  inconsistency vs `Shuffle::shuffle`'s `Err`/`Result`); behavior unchanged
+  (public API preserved).
+  (2) All 4 samplers (`Alias32/64`, `Bst32/64`) validate weights at build and
+  at `weights()`: empty slice, negative/NaN weights, and zero-total weights
+  panic with a `sampler weights:` message in both profiles — previously these
+  silently produced a uniform/unweighted distribution or pinned `sample()`
+  to index 0 (probed on the baseline). Zero weights on individual outcomes
+  stay legal (test: never selected). Shared helper `sampler::validate_weights`.
+  (3) Alias table memory: `alias: Vec<usize>` → `Vec<u32>` private change
+  (halved; guarded by a `u32::MAX` count assertion) — documented memory
+  optimization, no API change.
+  (4) SeedGen RDSEED/RDRAND retry budget 4 → 10 (Intel ISA guidance;
+  4 could abort mid-backoff), doc: "reproducibly" claim removed and replaced
+  with an explicit non-reproducibility statement.
+  (5) Doc fixes: `Sfc64x8`/`Biski64x8` struct + `nextu` docs (said "4-way/
+  AVX2/4 values", are 8-way/AVX-512/`[u64;8]`); README: `mt19937_new` C
+  signature (no `warm` parameter), wide-feature table additions
+  (`Threefry32x2x*`, `Threefry32x4x*`, `Squares32x*`), `Sfc32x4` moved out of
+  the 32-bit standard table into an explicit SSE2 tier, SIMD section intro
+  now states per-tier compile-time ISA requirements (compile-time gating,
+  runtime detection only in the C ABI), new "Determinism / compatibility
+  notes" section (PCG `inc` without `|1`, MT19937/SFMT custom seeding —
+  will-not-fix with rationale) and the cabi bulk-fill ≠ scalar sequential
+  stream note. Tests: choice should_panic + mut/single/reachability,
+  16 sampler tests (panic contracts ×4 families ×{all-zero, negative,
+  update-path, empty} + zero-entry legality). Suite counts: lib+sampler+
+  seedgen 80 ok, doc 52 ok. Next: Phase 7 (C ABI guards).
 
 
 ## Baseline benchmarks (pre-fix; criterion mean, release profile, `--noplot` same conditions)
@@ -126,16 +155,18 @@ Post-fix numbers go into "Performance changes" after the Phase 8 run. Raw snapsh
 
 ## Resume state (ephemeral checkpoint — update after every step)
 
-- Last completed: Phase 5 (A5+A6), code+tests complete, commit pending. Next: commit Phase 5,
-  then Phase 6 (A7 misc: choice/choice_mut empty contract, sampler validation, SeedGen
-  retries, doc fixes incl. Sfc64x8 lane count, README gaps, cabi bulk-fill note,
-  PCG|1 + MT seeding will-not-fix documentation).
+- Last completed: Phase 6 (A7 misc), commit pending. Next: Phase 7 (C ABI guards:
+  null pointer/out early-returns, boundary conditions, inter-chunk stream
+  duplication checks; cabi `*_rand_*` ranges are INCLUSIVE [min,max];
+  boundary samples valid).
 - Baseline benches: done, snapshotted to `bench-baseline/` (untracked) + table in this report.
 - Scratch probe crate: `C:\Users\cets0\AppData\Local\Temp\opencode\urng-fix-worker` (bins
   probe_wordv128, probe_ssx2, probe_shuffle, probe_ssx2_core; path-dep on this repo as `urng-fixed`).
 - CPU here: AVX-512VL+ capable (AVX512VL intrinsics do NOT crash here; risk is AVX2-only machines).
-- Phase 6 targets (from reading sessions): src/choice.rs, src/sampler/b64/alias.rs,
-  src/seedgen.rs; tests go inside existing `#[cfg(test)] mod tests`.
+- Phase 7 targets (from earlier reading): src/cabi/** — `fill_with(out, count, ...)`,
+  `par_fill_reseed32/64`; check null POINTER/OUT guards, count=0, INCLUSIVE range boundaries
+  [min,max] (Phase 0 probes confirmed valid boundary samples), alignment/NT-store paths,
+  stream-dup between consecutive chunk fills.
 - Findings to include in the final report: SplitMix64 begins at `seed | 1` (documented
   deviation → cross-checks must use odd seeds); cabi ssx2 emitted xoshiro256++ (now **); criterion
   on this machine for `simd/randiv` ≈ 53.5 ns/8 lanes.
