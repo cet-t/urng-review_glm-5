@@ -195,11 +195,14 @@ pub mod simd {
         /// The caller must ensure the CPU supports the `avx512f,avx512dq` target feature.
         #[target_feature(enable = "avx512f,avx512dq")]
         pub unsafe fn randi(&mut self, min: i64, max: i64) -> [i64; 8] {
+            // Issue A5: panic on `min > max`, modular `+ min` (full-span
+            // exact), same as the scalar `Word::to_randi`.
+            assert!(min <= max, "randi: invalid span (min {min} > max {max})");
             let u = unsafe { self.nextu() };
             let range = (max as i128 - min as i128 + 1) as u128;
             let mut out = [0i64; 8];
             for i in 0..8 {
-                out[i] = ((u[i] as u128 * range) >> 64) as i64 + min;
+                out[i] = (((u[i] as u128 * range) >> 64) as u64).wrapping_add(min as u64) as i64;
             }
             out
         }
@@ -301,11 +304,14 @@ pub mod simd {
         /// The caller must ensure the CPU supports the `avx512f,avx512dq` target feature.
         #[target_feature(enable = "avx512f,avx512dq")]
         pub unsafe fn randi(&mut self, min: i64, max: i64) -> [i64; 2] {
+            // Issue A5: panic on `min > max`, modular `+ min` (full-span
+            // exact), same as the scalar `Word::to_randi`.
+            assert!(min <= max, "randi: invalid span (min {min} > max {max})");
             let u = unsafe { self.nextu() };
             let range = (max as i128 - min as i128 + 1) as u128;
             [
-                ((u[0] as u128 * range) >> 64) as i64 + min,
-                ((u[1] as u128 * range) >> 64) as i64 + min,
+                (((u[0] as u128 * range) >> 64) as u64).wrapping_add(min as u64) as i64,
+                (((u[1] as u128 * range) >> 64) as u64).wrapping_add(min as u64) as i64,
             ]
         }
 
@@ -342,5 +348,67 @@ mod tests {
     crate::unsafe_test! {
         Cet64x8,
         Cet256x2
+    }
+
+    /// Issue A5 (regression) for `Cet64x8`: the inline `randi` used a plain
+    /// `+ min` and panicked on about half of the full-span space in debug.
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+    #[test]
+    fn cet64x8_randi_full_span_panic_free() {
+        if !std::arch::is_x86_feature_detected!("avx512f") {
+            eprintln!("skipping Cet64x8 randi test: avx512f not detected");
+            return;
+        }
+        let mut rng = unsafe { Cet64x8::new(1) };
+        let mut negatives = 0u32;
+        for _ in 0..64 {
+            let got = unsafe { rng.randi(i64::MIN, i64::MAX) };
+            for x in got {
+                negatives += u32::from(x < 0);
+            }
+        }
+        let p = negatives as f64 / 512.0;
+        assert!(
+            (0.30..=0.70).contains(&p),
+            "sign split p = {p}, expected ≁E0.5"
+        );
+    }
+
+    /// Issue A5 (regression) for `Cet256x2`, same as `cet64x8` above.
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+    #[test]
+    fn cet256x2_randi_full_span_panic_free() {
+        if !std::arch::is_x86_feature_detected!("avx512f")
+            || !std::arch::is_x86_feature_detected!("avx512dq")
+        {
+            eprintln!("skipping Cet256x2 randi test: avx512f/avx512dq not detected");
+            return;
+        }
+        let mut rng = unsafe { Cet256x2::new(1) };
+        let mut negatives = 0u32;
+        for _ in 0..64 {
+            let got = unsafe { rng.randi(i64::MIN, i64::MAX) };
+            for x in got {
+                negatives += u32::from(x < 0);
+            }
+        }
+        let p = negatives as f64 / 128.0;
+        assert!(
+            (0.30..=0.70).contains(&p),
+            "sign split p = {p}, expected ≁E0.5"
+        );
+    }
+
+    /// Issue A5: `min > max` must panic (Cet64x8 representative; the other
+    /// SIMD randis share the same contract through identical edits).
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+    #[test]
+    #[should_panic]
+    fn cet64x8_randi_min_gt_max_panics() {
+        if !std::arch::is_x86_feature_detected!("avx512f") {
+            panic!("unsupported host (requires avx512f; nothing to assert)");
+        }
+        let mut rng = unsafe { Cet64x8::new(2) };
+        let _ = unsafe { rng.randi(5, 1) };
     }
 }

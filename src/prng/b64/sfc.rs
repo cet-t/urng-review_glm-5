@@ -164,12 +164,17 @@ pub mod simd {
         /// The caller must ensure the CPU supports the `avx512f` target feature.
         #[inline(always)]
         pub unsafe fn randi(&mut self, min: i64, max: i64) -> [i64; 8] {
+            // Issue A5: same contract as the scalar `Word::to_randi`  E
+            // panic on `min > max`, and modular `+ min` so the full-span
+            // case does not overflow (the plain `+` panicked on about half
+            // of all draws in debug builds).
+            assert!(min <= max, "randi: invalid span (min {min} > max {max})");
             unsafe {
                 let u = self.nextu();
                 let range = (max as i128 - min as i128 + 1) as u128;
                 let mut out = [0i64; 8];
                 for i in 0..8 {
-                    out[i] = ((u[i] as u128 * range) >> 64) as i64 + min;
+                    out[i] = (((u[i] as u128 * range) >> 64) as u64).wrapping_add(min as u64) as i64;
                 }
                 out
             }
@@ -203,4 +208,50 @@ mod tests {
 
     #[cfg(all(feature = "simd", target_feature = "avx512f"))]
     crate::unsafe_test! { Sfc64x8 }
+
+    /// Issue A5 (regression), lane-exact: the inline SIMD `randi` used a
+    /// plain `+ min` and overflowed on about half of the full-span draw
+    /// space in debug builds. Lane seeding of `Sfc64x8::new` matches the
+    /// scalar `SplitMix64` draws 3i..3i+2 with counter 1, so the scalar
+    /// `Sfc64` reproduces every lane exactly and the mapping must agree
+    /// bit-for-bit with `wrapping_add`.
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+    #[test]
+    fn sfc64x8_randi_full_span_lane_exact() {
+        if !std::arch::is_x86_feature_detected!("avx512f") {
+            eprintln!("skipping Sfc64x8 randi test: avx512f not detected");
+            return;
+        }
+        let mut seedgen = SplitMix64::new(31);
+        let mut lanes: [Sfc64; 8] = std::array::from_fn(|_| Sfc64 {
+            a: wrap!(seedgen.nextu_const()),
+            b: wrap!(seedgen.nextu_const()),
+            c: wrap!(seedgen.nextu_const()),
+            counter: wrap!(1),
+        });
+
+        let mut rng = unsafe { Sfc64x8::new(31) };
+        for _ in 0..64 {
+            let got = unsafe { rng.randi(i64::MIN, i64::MAX) };
+            for i in 0..8 {
+                let u = lanes[i].nextu();
+                // Full-span range is 2^64, so the high word is `u` itself
+                // and the mapping is `u` wrapped with `min`.
+                let want = u.wrapping_add(i64::MIN as u64) as i64;
+                assert_eq!(got[i], want, "full-span lane {i}");
+            }
+        }
+    }
+
+    /// Issue A5: `min > max` must panic (was silent garbage in release).
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+    #[test]
+    #[should_panic]
+    fn sfc64x8_randi_min_gt_max_panics() {
+        if !std::arch::is_x86_feature_detected!("avx512f") {
+            panic!("unsupported host (requires avx512f; nothing to assert)");
+        }
+        let mut rng = unsafe { Sfc64x8::new(32) };
+        let _ = unsafe { rng.randi(5, 1) };
+    }
 }

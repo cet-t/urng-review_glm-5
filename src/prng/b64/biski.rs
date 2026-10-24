@@ -155,12 +155,15 @@ pub mod simd {
         /// The caller must ensure the CPU supports the `avx512f` target feature.
         #[inline(always)]
         pub unsafe fn randi(&mut self, min: i64, max: i64) -> [i64; 8] {
+            // Issue A5: same contract as the scalar `Word::to_randi`  E
+            // panic on `min > max`, modular `+ min` (full-span exact).
+            assert!(min <= max, "randi: invalid span (min {min} > max {max})");
             unsafe {
                 let u = self.nextu();
                 let range = (max as i128 - min as i128 + 1) as u128;
                 let mut out = [0i64; 8];
                 for i in 0..8 {
-                    out[i] = ((u[i] as u128 * range) >> 64) as i64 + min;
+                    out[i] = (((u[i] as u128 * range) >> 64) as u64).wrapping_add(min as u64) as i64;
                 }
                 out
             }
@@ -194,4 +197,41 @@ mod tests {
 
     #[cfg(all(feature = "simd", target_feature = "avx512f"))]
     crate::unsafe_test! { Biski64x8 }
+
+    /// Issue A5 (regression): the inline SIMD `randi` used a plain
+    /// `+ min`, which panicked on about half of the full-span draw space
+    /// under overflow checks. With the modular fix the full span must be
+    /// covered exactly: ~half of the draws land in each sign half.
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+    #[test]
+    fn biski64x8_randi_full_span_panic_free() {
+        if !std::arch::is_x86_feature_detected!("avx512f") {
+            eprintln!("skipping Biski64x8 randi test: avx512f not detected");
+            return;
+        }
+        let mut rng = unsafe { Biski64x8::new(1) };
+        let mut negatives = 0u32;
+        for _ in 0..64 {
+            let got = unsafe { rng.randi(i64::MIN, i64::MAX) };
+            negatives += u32::from(got[0] < 0) + u32::from(got[1] < 0);
+        }
+        let p = negatives as f64 / 128.0;
+        assert!(
+            (0.30..=0.70).contains(&p),
+            "sign split p = {p}, expected ≁E0.5"
+        );
+    }
+
+    /// Issue A5: `min > max` must panic in both profiles (was silent
+    /// garbage in release).
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+    #[test]
+    #[should_panic]
+    fn biski64x8_randi_min_gt_max_panics() {
+        if !std::arch::is_x86_feature_detected!("avx512f") {
+            panic!("unsupported host (requires avx512f; nothing to assert)");
+        }
+        let mut rng = unsafe { Biski64x8::new(2) };
+        let _ = unsafe { rng.randi(5, 1) };
+    }
 }

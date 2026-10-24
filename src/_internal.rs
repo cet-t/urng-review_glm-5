@@ -666,9 +666,13 @@ macro_rules! impl_rand_trait {
             impl rand_core::SeedableRng for $type {
                 type Seed = [u8; 4];
 
+                /// Issue A6: the seed words are little-endian, matching the
+                /// `try_next_u32`/`try_fill_bytes` byte order of this bridge
+                /// and independent of the host's native endianness (the
+                /// previous `u32::from_ne_bytes` made cross-platform seed
+                /// reproducibility impossible).
                 fn from_seed(seed: Self::Seed) -> Self {
-                    let seed = u32::from_ne_bytes(seed);
-                    Self::new(seed.into())
+                    Self::new(u32::from_le_bytes(seed))
                 }
             }
         )*
@@ -676,3 +680,65 @@ macro_rules! impl_rand_trait {
 }
 #[cfg(feature = "rand")]
 pub(crate) use impl_rand_trait;
+
+/// Same shape as [`impl_try_rng_trait`] but for width-64 native words
+/// (issue A6: the 64-bit generators had no `TryRng`/`Rng` impls at all —
+/// only `SeedableRng`, so `next_u64` was unavailable through rand's API).
+#[cfg(feature = "rand")]
+macro_rules! impl_try_rng_trait64 {
+    ($($type:ty),* $(,)?) => {
+        $(
+            impl rand_core::TryRng for $type {
+                type Error = std::convert::Infallible;
+
+                fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+                    // Low word of the native u64 output.
+                    Ok(self.nextu() as u32)
+                }
+
+                fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+                    Ok(self.nextu())
+                }
+
+                fn try_fill_bytes(&mut self, dst: &mut [u8]) -> Result<(), Self::Error> {
+                    let mut i = 0;
+                    while i < dst.len() {
+                        let remaining = dst.len() - i;
+                        if remaining >= 8 {
+                            let val = self.nextu();
+                            dst[i..i + 8].copy_from_slice(&val.to_le_bytes());
+                            i += 8;
+                        } else {
+                            let val = self.nextu();
+                            dst[i..].copy_from_slice(&val.to_le_bytes()[..remaining]);
+                            i += remaining;
+                        }
+                    }
+                    Ok(())
+                }
+            }
+        )*
+    };
+}
+#[cfg(feature = "rand")]
+pub(crate) use impl_try_rng_trait64;
+
+/// Same bridge for width-64 generators: `[u8; 8]` exposes the full `u64`
+/// seed word (the 4-byte bridge previously truncated the seed space to
+/// `2^32`), also little-endian (issue A6).
+#[cfg(feature = "rand")]
+macro_rules! impl_rand_trait64 {
+    ($($type:ty),* $(,)?) => {
+        $(
+            impl rand_core::SeedableRng for $type {
+                type Seed = [u8; 8];
+
+                fn from_seed(seed: Self::Seed) -> Self {
+                    Self::new(u64::from_le_bytes(seed))
+                }
+            }
+        )*
+    };
+}
+#[cfg(feature = "rand")]
+pub(crate) use impl_rand_trait64;
