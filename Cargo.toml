@@ -1,0 +1,73 @@
+[package]
+name = "urng"
+version = "1.0.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.92"
+authors = ["cet"]
+description = "Universal Random Number Generator"
+repository = "https://github.com/cet-t/urng"
+keywords = ["random", "rng"]
+exclude = ["bench.md", "build.rs", "test.nu"]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[build-dependencies]
+csbindgen = "1.9.7"
+
+[dev-dependencies]
+rand = { version = "0.10", default-features = false }
+colored = "3.1.1"
+thousands = "0.2.0"
+plotters = "0.3"
+criterion = { version = "0.8.2", features = ["csv_output", "plotters"] }
+anyhow = "1.0.104"
+rand_sfc = "0.2.0"
+
+[[example]]
+name = "vector-test"
+required-features = ["cabi", "simd"]
+path = "examples/cabi/test.rs"
+
+[[example]]
+name = "scalar-test"
+path = "examples/scalar/test.rs"
+
+[[example]]
+name = "wide-test"
+required-features = ["wide"]
+path = "examples/wide/test.rs"
+
+[[example]]
+name = "iter-test"
+path = "examples/iter/test.rs"
+
+[[example]]
+name = "test"
+path = "examples/test/test.rs"
+
+
+[features]
+rand = ["dep:rand_core"]
+cabi = ["dep:rayon"]
+wide = ["dep:wide"]
+simd = []
+sampler = []
+seedgen = []
+full = ["rand", "cabi", "wide", "simd", "sampler", "seedgen"]
+
+[dependencies]
+wide = { version = "1.5.0", optional = true }
+bytemuck = { version = "1", features = ["derive"] }
+pastey = "0.2"
+rayon = { version = "1.10", optional = true }
+rand_core = { version = "0.10", optional = true }
+thiserror = { version = "2", optional = true }
+wrapn = "0.10.0"

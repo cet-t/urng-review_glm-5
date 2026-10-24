@@ -1,0 +1,96 @@
+use wrapn::{wrap, wusize};
+
+use crate::{
+    _internal::{i2f_bits, u2f_01},
+    SplitMix32,
+    rng::Rng,
+};
+
+// --- TwistedGFSR ---
+
+/// Twisted GFSR (Generalized Feedback Shift Register) 64-bit RNG implementation.
+///
+/// # Example
+/// ```
+/// use urng::{Rng, TwistedGFSR};
+///
+/// let mut rng = TwistedGFSR::new(0);
+/// let _ = rng.nextu();
+/// ```
+#[repr(C, align(64))]
+#[derive(Debug, Clone, Copy)]
+pub struct TwistedGFSR {
+    seed: [u32; N_GFSR],
+    index: wusize,
+}
+
+const N_GFSR: usize = 25;
+const M_GFSR: usize = 7;
+const MAG01: [u32; 2] = [0x0, 0x8ebf_d028];
+
+impl TwistedGFSR {
+    /// Creates a new `TwistedGFSR` instance with the given seed.
+    pub fn new(seed: u64) -> Self {
+        let mut seedgen = SplitMix32::new(seed as u32);
+        let seed = [0u32; N_GFSR].map(|_| seedgen.nextu_const());
+        Self {
+            seed,
+            index: wrap!(N_GFSR),
+        }
+    }
+
+    fn twist(&mut self) {
+        for k in 0..(N_GFSR - M_GFSR) {
+            self.seed[k] =
+                self.seed[k + M_GFSR] ^ (self.seed[k] >> 1) ^ MAG01[(self.seed[k] & 1) as usize];
+        }
+        for k in (N_GFSR - M_GFSR)..N_GFSR {
+            self.seed[k] = self.seed[k + M_GFSR - N_GFSR]
+                ^ (self.seed[k] >> 1)
+                ^ MAG01[(self.seed[k] & 1) as usize];
+        }
+        self.index = 0.into();
+    }
+}
+
+impl Rng for TwistedGFSR {
+    type Word = u64;
+
+    #[inline]
+    fn nextu(&mut self) -> Self::Word {
+        if self.index >= N_GFSR {
+            self.twist();
+        }
+        let mut y = self.seed[*self.index];
+        y ^= (y << 7) & 0x2b5b_2500;
+        y ^= (y << 15) & 0xdb8b_0000;
+        y ^= y >> 16;
+        self.index += 1;
+        u64::from(y)
+    }
+
+    #[inline(always)]
+    fn nextf(&mut self) -> f64 {
+        // TwistedGFSR emits 32-bit-range words in a u64; use the 32-bit
+        // bit-trick (matching the scalar `u2f_01`) widened to f64.
+        u2f_01!(f32, 32, self.nextu() as u32) as f64
+    }
+
+    #[inline(always)]
+    fn randi(&mut self, min: i64, max: i64) -> i64 {
+        let range = (max as i128 - min as i128 + 1) as u128;
+        ((self.nextu() as u128 * range) >> 32) as i64 + min
+    }
+
+    #[inline(always)]
+    fn randf(&mut self, min: f64, max: f64) -> f64 {
+        min + self.nextf() * (max - min)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    crate::safe_test! { TwistedGFSR }
+}

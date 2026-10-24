@@ -1,0 +1,197 @@
+use wrapn::{wrap, wu64};
+
+use crate::{prng::b64::SplitMix64, rng::Rng};
+
+/// Xoroshiro128++ 64-bit RNG implementation.
+///
+/// # Example
+/// ```
+/// use urng::{Rng, Xoroshiro128Pp};
+///
+/// let mut rng = Xoroshiro128Pp::new(1);
+/// let _ = rng.nextu();
+/// ```
+#[repr(C, align(64))]
+#[derive(Debug, Clone, Copy)]
+pub struct Xoroshiro128Pp {
+    s: [wu64; 2],
+}
+
+impl Xoroshiro128Pp {
+    /// Creates a new `Xoroshiro128Pp` instance with the given seed.
+    pub const fn new(seed: u64) -> Self {
+        let mut seedgen = SplitMix64::new(seed | 1);
+        Self {
+            s: wrap![seedgen.nextu_const(), seedgen.nextu_const()],
+        }
+    }
+
+    /// Applies the jump function for advancing by $2^{64}$ steps.
+    #[inline]
+    pub fn jump(&mut self) {
+        const JUMP: [u64; 2] = [0x2bd7a6a6e99c2ddc, 0x0992ccaf6a6fca05];
+
+        macro_rules! jump {
+            ($i:expr, $s:ident) => {
+                // TODO: unrolling
+                for b in 0..64 {
+                    if (JUMP[$i] & (1 << b)) != 0 {
+                        $s[0] ^= self.s[0];
+                        $s[1] ^= self.s[1];
+                    }
+                    let _ = self.nextu();
+                }
+            };
+        }
+
+        let mut s = wrap![0; 2];
+        jump!(0, s);
+        jump!(1, s);
+        self.s = s;
+    }
+
+    /// Applies the long-jump function for advancing by $2^{96}$ steps.
+    #[inline]
+    pub fn long_jump(&mut self) {
+        const LONG_JUMP: [u64; 2] = [0x360fd5f2cf8d5d99, 0x9c6e6877736c46e3];
+
+        macro_rules! long_jump {
+            ($i:expr, $s:ident) => {
+                for i in 0..LONG_JUMP.len() {
+                    // TODO: unrolling
+                    for b in 0..64 {
+                        if (LONG_JUMP[i] & (1 << b)) != 0 {
+                            $s[0] ^= self.s[0];
+                            $s[1] ^= self.s[1];
+                        }
+                        let _ = self.nextu();
+                    }
+
+                    self.s = $s;
+                }
+            };
+        }
+
+        let mut s = wrap![0; 2];
+        long_jump!(0, s);
+        long_jump!(1, s);
+        self.s = s;
+    }
+}
+
+impl Rng for Xoroshiro128Pp {
+    type Word = u64;
+
+    #[inline]
+    fn nextu(&mut self) -> Self::Word {
+        let s = self.s;
+        let result = s[0] + s[1];
+
+        self.s[0] = s[1] ^ s[0];
+        self.s[1] = self.s[1] ^ s[0].rotate_left(24) ^ (self.s[1] << 16);
+        self.s[1] = self.s[1].rotate_left(37);
+
+        *result.raw()
+    }
+}
+
+/// Xoroshiro128** 64-bit RNG implementation.
+///
+/// # Example
+/// ```
+/// use urng::{Rng, Xoroshiro128Ss};
+///
+/// let mut rng = Xoroshiro128Ss::new(1);
+/// let _ = rng.nextu();
+/// ```
+#[repr(C, align(64))]
+#[derive(Debug, Clone, Copy)]
+pub struct Xoroshiro128Ss {
+    s: [wu64; 2],
+}
+
+impl Xoroshiro128Ss {
+    /// Creates a new `Xoroshiro128Ss` instance with the given seed.
+    pub fn new(seed: u64) -> Self {
+        let mut seedgen = SplitMix64::new(seed);
+        Self {
+            s: wrap![seedgen.nextu(), seedgen.nextu()],
+        }
+    }
+
+    /// Applies the jump function for advancing by $2^{64}$ steps.
+    #[inline]
+    pub fn jump(&mut self) {
+        const JUMP: [u64; 2] = [0xdf900294d8f554a5, 0x170865df4b3201fc];
+
+        macro_rules! jump {
+            ($i:expr, $s:ident) => {
+                // TODO: unrolling
+                for b in 0..64 {
+                    if (JUMP[$i] & (1 << b)) != 0 {
+                        $s[0] ^= self.s[0];
+                        $s[1] ^= self.s[1];
+                    }
+                    let _ = self.nextu();
+                }
+            };
+        }
+
+        let mut s = wrap![0; 2];
+        jump!(0, s);
+        jump!(1, s);
+        self.s = s;
+    }
+
+    /// Applies the long-jump function for advancing by $2^{96}$ steps.
+    #[inline]
+    pub fn long_jump(&mut self) {
+        const LONG_JUMP: [u64; 2] = [0xd2a98b26625eee7b, 0xdddf9b1090aa7ac1];
+
+        macro_rules! long_jump {
+            ($i:expr, $s:ident) => {
+                for i in 0..LONG_JUMP.len() {
+                    for b in 0..64 {
+                        if (LONG_JUMP[i] & (1 << b)) != 0 {
+                            $s[0] ^= self.s[0];
+                            $s[1] ^= self.s[1];
+                        }
+                        let _ = self.nextu();
+                    }
+
+                    self.s = $s;
+                }
+            };
+        }
+
+        let mut s = wrap![0; 2];
+        long_jump!(0, s);
+        long_jump!(1, s);
+        self.s = s;
+    }
+}
+
+impl Rng for Xoroshiro128Ss {
+    type Word = u64;
+
+    #[inline]
+    fn nextu(&mut self) -> Self::Word {
+        let result = (self.s[0] * 5).rotate_left(7) * 9;
+
+        self.s[1] ^= self.s[0];
+        self.s[0] = self.s[1] ^ self.s[0].rotate_left(24) ^ (self.s[1] << 16);
+        self.s[1] = self.s[1].rotate_left(37);
+
+        *result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    crate::safe_test! {
+        Xoroshiro128Pp,
+        Xoroshiro128Ss
+    }
+}

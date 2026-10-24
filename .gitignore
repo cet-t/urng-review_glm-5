@@ -1,0 +1,11 @@
+/target
+.vscode/
+.VSCodeCounter/
+.cargo/
+.claude/
+.github/
+tests/logs/*.png
+tasks/
+sources/
+token-optimizer/
+AGENTS.md
