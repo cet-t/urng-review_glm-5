@@ -1,4 +1,4 @@
-#![cfg_attr(not(doctest), doc = include_str!("../Readme.md"))]
+#![cfg_attr(not(doctest), doc = include_str!("../README.md"))]
 #![allow(ambiguous_glob_reexports)]
 
 mod rng;
