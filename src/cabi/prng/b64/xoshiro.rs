@@ -160,8 +160,8 @@ mod simd {
         nt: bool,
         base_seed: u64,
     ) {
-        // 4-way interleaved xoshiro256++ with AVX-512 SoA layout.
-        // Each group holds 8 independent xoshiro256++ streams (SoA: one __m512i per state word).
+        // 4-way interleaved xoshiro256** with AVX-512 SoA layout.
+        // Each group holds 8 independent xoshiro256** streams (SoA: one __m512i per state word).
         // 4 groups × 8 streams = 32 independent streams total, producing 32 u64 per iteration.
         let stride = 0x9E3779B97F4A7C15u64;
         let chunk_base = base_seed.wrapping_add((chunk_idx as u64).wrapping_mul(stride));
@@ -194,26 +194,28 @@ mod simd {
         let (mut s0_2, mut s1_2, mut s2_2, mut s3_2) = make_state_vec!(2);
         let (mut s0_3, mut s1_3, mut s2_3, mut s3_3) = make_state_vec!(3);
 
-        // xoshiro256++ step: res = rotl(s0+s3,23)+s0; update state in place.
-        // All 4 groups' sums and rotates are issued together to maximize port-0 utilization.
+        // xoshiro256** step: res = rotl(s1*5, 7)*9; update state in place.
+        // All 4 groups' multiplies and rotates are issued together to
+        // maximize port-0 utilization. (Multiply = shift-add, so only
+        // `avx512f` is required.)
         macro_rules! step4 {
             () => {{
                 use std::arch::x86_64::{
                     _mm512_add_epi64, _mm512_rol_epi64, _mm512_slli_epi64, _mm512_xor_si512,
                 };
-                // Issue 4 sums + 4 rotates together (4 port-0 ROL ops at once)
-                let sum0 = _mm512_add_epi64(s0_0, s3_0);
-                let sum1 = _mm512_add_epi64(s0_1, s3_1);
-                let sum2 = _mm512_add_epi64(s0_2, s3_2);
-                let sum3 = _mm512_add_epi64(s0_3, s3_3);
-                let rot0 = _mm512_rol_epi64(sum0, 23);
-                let rot1 = _mm512_rol_epi64(sum1, 23);
-                let rot2 = _mm512_rol_epi64(sum2, 23);
-                let rot3 = _mm512_rol_epi64(sum3, 23);
-                let res0 = _mm512_add_epi64(rot0, s0_0);
-                let res1 = _mm512_add_epi64(rot1, s0_1);
-                let res2 = _mm512_add_epi64(rot2, s0_2);
-                let res3 = _mm512_add_epi64(rot3, s0_3);
+                // res = rotl(s1 + (s1 << 2), 7) * 9 for all 4 groups
+                let m5_0 = _mm512_add_epi64(s1_0, _mm512_slli_epi64(s1_0, 2));
+                let m5_1 = _mm512_add_epi64(s1_1, _mm512_slli_epi64(s1_1, 2));
+                let m5_2 = _mm512_add_epi64(s1_2, _mm512_slli_epi64(s1_2, 2));
+                let m5_3 = _mm512_add_epi64(s1_3, _mm512_slli_epi64(s1_3, 2));
+                let rot0 = _mm512_rol_epi64(m5_0, 7);
+                let rot1 = _mm512_rol_epi64(m5_1, 7);
+                let rot2 = _mm512_rol_epi64(m5_2, 7);
+                let rot3 = _mm512_rol_epi64(m5_3, 7);
+                let res0 = _mm512_add_epi64(rot0, _mm512_slli_epi64(rot0, 3));
+                let res1 = _mm512_add_epi64(rot1, _mm512_slli_epi64(rot1, 3));
+                let res2 = _mm512_add_epi64(rot2, _mm512_slli_epi64(rot2, 3));
+                let res3 = _mm512_add_epi64(rot3, _mm512_slli_epi64(rot3, 3));
                 // Compute t for all groups (slli = port 0,5)
                 let t0 = _mm512_slli_epi64(s1_0, 17);
                 let t1 = _mm512_slli_epi64(s1_1, 17);
@@ -300,8 +302,10 @@ mod simd {
         }
         unsafe {
             let rng = &mut *ptr;
-            let mut s_arr = [0u64; 8];
-            _mm512_storeu_si512(s_arr.as_mut_ptr() as *mut _, rng.s);
+            // The state block is `[u64; 8]`: lanes 0-3 hold generator A's
+            // seeding words, 4-7 generator B's. The parallel bulk fill
+            // derives its deterministic per-call sub-seed from generator A.
+            let s_arr = rng.s;
             let base_seed = s_arr[0]
                 .wrapping_add(s_arr[1])
                 .wrapping_add(s_arr[2])

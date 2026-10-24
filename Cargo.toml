@@ -30,6 +30,8 @@ plotters = "0.3"
 criterion = { version = "0.8.2", features = ["csv_output", "plotters"] }
 anyhow = "1.0.104"
 rand_sfc = "0.2.0"
+rand_xoshiro = "0.8.1"
+rand_core = "0.10"
 
 [[example]]
 name = "vector-test"
